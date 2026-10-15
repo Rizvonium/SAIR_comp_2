@@ -54,3 +54,19 @@ def test_snapshot_roundtrip(con, tmp_path):
     stats = export.import_jsonl(con2, tmp_path / "best_solutions.jsonl")
     assert stats["new"] == 2 and stats["rejected"] == 0
     assert db.best_lengths(con2) == db.best_lengths(con)
+
+
+def test_bookkeeping_params_and_tail(con):
+    # controller-style jobs carry "_action"; the engine must never see it
+    jobs = loop.make_jobs("t", IDS[:2], "gbfs", {"time_limit": 5, "_action": "cover"})
+    _, stats = loop.submit_batch(con, "t", jobs, threads=2, verbose=False)
+    assert stats["solved"] == 2
+    before = db.best_lengths(con)
+    # tail re-search splices the prefix back; anything stored must verify
+    jobs = loop.make_jobs("u", IDS[:2], "tail", {"tail_frac": 0.5, "_action": "resolve"})
+    _, stats = loop.submit_batch(con, "u", jobs, threads=2, verbose=False)
+    assert stats["rejected"] == 0
+    after = db.best_lengths(con)
+    assert all(after[k] <= before[k] for k in before)
+    for r in con.execute("SELECT * FROM runs WHERE strategy='tail' AND solved=1"):
+        assert r["verified"] == 1

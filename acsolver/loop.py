@@ -15,6 +15,7 @@ import time
 from pathlib import Path
 
 from . import db, engine, official, problems
+from .official import vcore
 
 # Named strategy presets.  Every key is an engine parameter (search.hpp /
 # shorten.hpp); the controller may override any of them per job.
@@ -40,6 +41,9 @@ PRESETS: dict[str, dict] = {
     "guided": {"strategy": "gbfs", "lam": 0.5, "self_corridor": 1, "max_nodes": 3_000_000, "time_limit": 20},
     "guided_beam": {"strategy": "beam", "beam_width": 3000, "self_corridor": 1, "max_nodes": 10_000_000,
                     "time_limit": 30},
+    # guided re-search from an intermediate state of the best path
+    "tail": {"strategy": "gbfs", "lam": 0.5, "self_corridor": 1, "tail_frac": 0.5, "max_nodes": 2_000_000,
+             "time_limit": 15},
     # re-shorten the stored best path with larger balls
     "polish": {"strategy": "polish", "d1": 5, "d2": 5, "ball_budget": 60_000_000, "shorten_time": 120},
 }
@@ -80,10 +84,12 @@ def run_batch(con, batch_id: int, threads: int | None = None, endgame="default",
         db.finish_batch(con, batch_id)
         return stats
     t0 = time.time()
-    solve_recs, polish_recs, by_idx = [], [], {}
+    solve_recs, polish_recs, by_idx, prefixes = [], [], {}, {}
     for j in jobs:
         params = json.loads(j["params"])
         by_idx[j["job_idx"]] = (j, params)
+        # keys starting with "_" and "tail_frac" are bookkeeping, not engine params
+        eparams = {k: v for k, v in params.items() if not k.startswith("_") and k != "tail_frac"}
         p = _problem(j["problem_id"])
         rec = {"id": j["problem_id"], "job": j["job_idx"], "r0": p["r0"], "r1": p["r1"], "seed": j["seed"]}
         if params.get("strategy") == "polish":
@@ -94,14 +100,25 @@ def run_batch(con, batch_id: int, threads: int | None = None, endgame="default",
                               result={"solved": False, "note": "no_best"}, verdict=None)
                 continue
             rec["path"] = json.loads(b["path"])
-            rec["params"] = {k: v for k, v in params.items() if k != "strategy"}
+            rec["params"] = {k: v for k, v in eparams.items() if k != "strategy"}
             polish_recs.append(rec)
         else:
-            rec["params"] = {**SHORTEN_DEFAULT, **params}
+            rec["params"] = {**SHORTEN_DEFAULT, **eparams}
             if params.get("self_corridor"):
                 b = db.best(con, j["problem_id"])
                 if b is not None:
                     rec["params"]["bound"] = b["length"]
+                    if params.get("tail_frac") is not None:
+                        # tail re-search: start from an intermediate state of the
+                        # best path; the prefix is spliced back before verification
+                        bp = json.loads(b["path"])
+                        i = int(len(bp) * float(params["tail_frac"]))
+                        s = (tuple(p["r0"]), tuple(p["r1"]))
+                        for m in bp[:i]:
+                            s = vcore.apply_move(s, m)
+                        rec["r0"], rec["r1"] = list(s[0]), list(s[1])
+                        rec["params"]["bound"] = len(bp) - i
+                        prefixes[j["job_idx"]] = bp[:i]
             solve_recs.append(rec)
 
     gopts = {"shorten": 1, "emit_raw": 1}
@@ -133,6 +150,11 @@ def run_batch(con, batch_id: int, threads: int | None = None, endgame="default",
             print("engine error:", res, file=sys.stderr)
             continue
         j, params = by_idx[res["job"]]
+        pre = prefixes.get(res["job"])
+        if pre and res.get("solved"):
+            res["path"] = pre + res["path"]
+            if res.get("raw_path"):
+                res["raw_path"] = pre + res["raw_path"]
         verdict = None
         if res.get("solved"):
             verdict = official.verify_one(j["problem_id"], res["path"], problems.manifest_for(j["problem_id"]))

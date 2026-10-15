@@ -38,7 +38,7 @@ DEFAULTS = {
     "action_weights": {"cover": 1.0, "escalate": 1.0, "bidir": 0.5, "polish": 0.6, "resolve": 0.6},
     "cover_preset": "gbfs",
     "ladder": ["gbfs", "gbfs_noise", "beam", "gbfs_deep", "beam_wide"],
-    "resolve_presets": ["guided", "gbfs_lam", "guided_beam", "gbfs_noise"],
+    "resolve_presets": ["guided", "tail", "gbfs_lam", "tail", "guided_beam", "gbfs_noise"],
     "bidir_max_len": 14,               # attempt exact search when best <= this
     "preset_overrides": {},            # preset -> {param: value}
     "use_macros": False,
@@ -146,6 +146,8 @@ def plan(con, cfg) -> tuple[list[dict], dict, str]:
                 preset = cfg["resolve_presets"][n_prev % len(cfg["resolve_presets"])]
             params = dict(loop.PRESETS[preset])
             params.update(cfg["preset_overrides"].get(preset, {}))
+            if preset == "tail":  # vary the split point between attempts
+                params["tail_frac"] = (0.2, 0.4, 0.6, 0.8)[loop.job_seed(label, len(jobs), p) % 4]
             params["_action"] = a
             jobs.append({"problem_id": p, "strategy": preset, "params": params,
                          "seed": loop.job_seed(label, len(jobs), p)})

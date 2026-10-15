@@ -200,8 +200,13 @@ def render(con) -> str:
     sub_info = ""
     if rep.exists():
         r = json.loads(rep.read_text())
-        sub_info = (f"{r['solutions']} verified paths in {len(r['parts'])} upload-ready parts "
+        sub_info = (f"AC: {r['solutions']} verified paths in {len(r['parts'])} upload-ready parts "
                     f"(≤500 lines each, all checked by the official CLI).")
+    srep = official.ROOT / "results" / "stable_submission_report.json"
+    if srep.exists():
+        r = json.loads(srep.read_text())
+        sub_info += (f" Stable AC: {r['solutions']} derived paths ({r['total_moves']} moves) in "
+                     f"{len(r['parts'])} parts.")
 
     page = f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>ACC Solver Dashboard</title>
@@ -212,7 +217,8 @@ def render(con) -> str:
 <div class="tiles">{tiles_html}</div>
 <h2>Export</h2>
 <div class="card"><a href="submission.txt" download>Download submission.txt</a> (all verified best paths) ·
-<a href="submission_parts/">upload-ready parts</a> · <a href="best_solutions.jsonl" download>best_solutions.jsonl</a>
+<a href="submission_parts/">upload-ready parts</a> · <a href="best_solutions.jsonl" download>best_solutions.jsonl</a> ·
+<a href="stable_submission.txt" download>stable_submission.txt</a>
 <p class="sub" style="margin:6px 0 0">{_esc(sub_info)}</p></div>
 <h2>Progress</h2>
 <div class="grid2">
