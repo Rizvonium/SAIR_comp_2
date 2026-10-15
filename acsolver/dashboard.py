@@ -27,10 +27,10 @@ font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
 main{max-width:1180px;margin:0 auto;padding:20px 16px 60px}
 h1{font-size:22px;margin:0 0 4px}h2{font-size:16px;margin:28px 0 10px}
 .sub{color:var(--ink2);margin:0 0 18px}
-.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,150px),1fr));gap:12px}
 .tile{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:12px 14px}
 .tile .v{font-size:26px;font-weight:650;font-variant-numeric:tabular-nums}.tile .k{color:var(--ink2);font-size:12px}
-.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,480px),1fr));gap:16px}
 .card{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:12px 14px;overflow:auto}
 table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
 th,td{text-align:left;padding:4px 8px;border-bottom:1px solid var(--grid);white-space:nowrap}
@@ -41,7 +41,9 @@ code{font-size:12px;color:var(--ink2)}svg text{fill:var(--ink2);font-size:11px}
 #tip{position:fixed;pointer-events:none;background:var(--panel);color:var(--ink);border:1px solid var(--border);
 border-radius:6px;padding:4px 8px;font-size:12px;display:none;box-shadow:0 2px 8px rgba(0,0,0,.15)}
 .note{white-space:pre-wrap;color:var(--ink2);font-size:13px}
-a{color:var(--series)}
+a{color:var(--series);overflow-wrap:anywhere}
+.grid2>*,.tiles>*{min-width:0}
+html,body{overflow-x:hidden}
 .toggle{float:right;font-size:12px;background:var(--panel);color:var(--ink);border:1px solid var(--border);
 border-radius:6px;padding:3px 8px;cursor:pointer}
 """
@@ -171,7 +173,7 @@ def render(con) -> str:
         "ORDER BY first_len - now_len DESC LIMIT 15").fetchall()
     imp_rows = [(_esc(r["problem_id"]), r["first_len"], r["now_len"], r["first_len"] - r["now_len"], r["steps"])
                 for r in imp]
-    unsolved = [p for p in P if p not in best]
+    unsolved = [p for p in P if p not in best and p in status and status[p]["attempts"] > 0]
     hard = sorted(unsolved, key=lambda p: -(status[p]["total_secs"] if p in status else 0))[:15]
     hard_rows = []
     for p in hard:
