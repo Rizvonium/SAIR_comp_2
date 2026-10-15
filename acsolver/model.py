@@ -23,14 +23,14 @@ MODEL_PATH = official.ROOT / "data" / "value_model.txt"
 NFEAT = 18
 
 
-def dataset(con, max_paths=None, seed=0):
+def dataset(con, max_paths=None, seed=0, siblings=True):
     rows = con.execute("SELECT problem_id, path FROM best_solutions").fetchall()
     random.Random(seed).shuffle(rows)
     if max_paths:
         rows = rows[:max_paths]
     allp = {**problems.ac_problems(), **problems.training_problems()}
     recs = [{"id": r["problem_id"], "r0": allp[r["problem_id"]]["r0"], "r1": allp[r["problem_id"]]["r1"],
-             "path": json.loads(r["path"])} for r in rows if r["problem_id"] in allp]
+             "path": json.loads(r["path"]), "siblings": siblings} for r in rows if r["problem_id"] in allp]
     X, y, groups = [], [], []
     for out in engine.stream("features", recs):
         X.extend(out["X"])

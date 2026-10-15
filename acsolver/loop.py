@@ -12,6 +12,7 @@ import hashlib
 import json
 import sys
 import time
+from pathlib import Path
 
 from . import db, engine, official, problems
 
@@ -152,9 +153,6 @@ def run_batch(con, batch_id: int, threads: int | None = None, endgame="default",
     return stats
 
 
-CORRIDORS = engine.DATA / "corridors.jsonl"
-
-
 def write_corridors(con, max_raw_len: int = 4000):
     """All verified best paths plus the raw (pre-shortening) paths of
     verified runs, as {id, r0, r1, path} lines for the engine's corridor
@@ -163,16 +161,20 @@ def write_corridors(con, max_raw_len: int = 4000):
     rows = con.execute("SELECT problem_id, path FROM best_solutions").fetchall()
     raws = con.execute("SELECT problem_id, raw_path FROM runs WHERE verified=1 AND raw_path IS NOT NULL "
                        "AND raw_len <= ?", (max_raw_len,)).fetchall()
-    if not rows:
-        return None
-    tmp = CORRIDORS.with_suffix(".tmp")
+    # one corridor file per database (tests use temporary DBs)
+    dbfile = Path(con.execute("PRAGMA database_list").fetchone()[2])
+    out = dbfile.with_name(dbfile.stem + "_corridors.jsonl")
+    tmp = out.with_suffix(".tmp")
     with open(tmp, "w") as f:
         for pid, path in list(rows) + list(raws):
             p = allp.get(pid)
             if p:
                 f.write(json.dumps({"id": pid, "r0": p["r0"], "r1": p["r1"], "path": json.loads(path)}) + "\n")
-    tmp.replace(CORRIDORS)
-    return CORRIDORS
+        # the published training certificates are valid paths too
+        for pid, t in problems.training_problems().items():
+            f.write(json.dumps({"id": pid, "r0": t["r0"], "r1": t["r1"], "path": t["known"]}) + "\n")
+    tmp.replace(out)
+    return out
 
 
 def submit_batch(con, label: str, jobs: list[dict], config: dict | None = None, **kw) -> tuple[int, dict]:

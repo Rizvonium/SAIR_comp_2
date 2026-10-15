@@ -315,16 +315,36 @@ int main(int argc, char** argv) {
         auto v = mj::parse(l);
         State s = state_of(v);
         auto path = v["path"].as_ints();
+        // On-path states are labelled with the moves remaining; with
+        // "siblings": off-path children of each path state are labelled
+        // remaining + 1 (they need at least one step back), which gives the
+        // model a ranking signal between siblings.
+        const bool sib = v.has("siblings") && v["siblings"].b;
         std::string X = "[", Y = "[";
         float f[NFEAT];
-        for (size_t i = 0; i <= path.size(); ++i) {
-          compute_features(s.r[0].data(), (int)s.r[0].size(), s.r[1].data(), (int)s.r[1].size(), &S.eg, f);
-          if (i) X += ",", Y += ",";
+        bool first = true;
+        auto emit = [&](const State& x, size_t label) {
+          compute_features(x.r[0].data(), (int)x.r[0].size(), x.r[1].data(), (int)x.r[1].size(), &S.eg, f);
+          if (!first) X += ",", Y += ",";
+          first = false;
           X += "[";
           for (int k = 0; k < NFEAT; ++k) X += (k ? "," : "") + std::to_string((int)f[k]);
           X += "]";
-          Y += std::to_string(path.size() - i);
-          if (i < path.size()) apply_move(s, path[i]);
+          Y += std::to_string(label);
+        };
+        auto st = states_along(s, path);
+        for (size_t i = 0; i < st.size(); ++i) {
+          size_t rem = path.size() - i;
+          emit(st[i], rem);
+          if (sib && i < path.size()) {
+            uint64_t hn = hash_state(st[i + 1]), hp = i ? hash_state(st[i - 1]) : 0;
+            for (int mm = 0; mm < NUM_MOVES; ++mm) {
+              State c = st[i];
+              apply_move(c, mm);
+              uint64_t hc = hash_state(c);
+              if (hc != hn && hc != hp && !is_target(c)) emit(c, rem + 1);
+            }
+          }
         }
         return mj::ObjWriter().str("id", v["id"].as_str()).raw("X", X + "]").raw("y", Y + "]").done();
       });

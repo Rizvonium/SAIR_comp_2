@@ -5,3 +5,4 @@ data/*.bin
 data/*.sqlite
 data/*.sqlite-*
 *.tmp
+data/*_corridors.jsonl
