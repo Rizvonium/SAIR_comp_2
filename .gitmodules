@@ -1,0 +1,3 @@
+[submodule "external/Andrews-Curtis"]
+	path = external/Andrews-Curtis
+	url = https://github.com/SAIRcompetition/Andrews-Curtis
