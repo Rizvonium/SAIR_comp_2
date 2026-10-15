@@ -258,15 +258,19 @@ inline std::vector<int> ball_round(const State& start, const std::vector<int>& p
   return path;
 }
 
+// Shortening may splice onto any known path, including other paths of the
+// same problem (self-exclusion only matters for search, where the problem's
+// own stored path would be returned trivially); only strictly shorter
+// results are ever accepted.
 inline std::vector<int> shorten(const State& start, std::vector<int> path, const Endgame& eg,
                                 const ShortenParams& SP, Ctx& C) {
   if (!reaches_target(start, path)) return path;
-  path = cheap_shorten(start, path, eg, C.cor, C.self);
+  path = cheap_shorten(start, path, eg, C.cor, 0);
   for (int round = 0; round < SP.max_rounds; ++round) {
     if (C.elapsed() > SP.time_limit) break;
     auto np = ball_round(start, path, eg, SP, C);
     if (np.size() >= path.size()) break;
-    path = cheap_shorten(start, np, eg, C.cor, C.self);
+    path = cheap_shorten(start, np, eg, C.cor, 0);
   }
   return path;
 }
