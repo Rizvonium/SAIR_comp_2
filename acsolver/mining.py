@@ -105,7 +105,7 @@ def by_feature(con, paths: dict):
         f = problems.features(p)
         b = f["total"] // 4 * 4
         key = f"{b:02d}-{b + 3:02d}"
-        for d, k in ((rows, key), (fam, "MS n=%s" % f["ms_n"] if f["ms_n"] else "non-MS")):
+        for d, k in ((rows, key), (fam, f["family"])):
             d[k]["n"] += 1
             if pid in paths:
                 d[k]["solved"] += 1

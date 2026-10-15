@@ -1,0 +1,7 @@
+{
+  "_note": "Analyst steering for the controller (merged over controller.DEFAULTS). Phase 1: quick coverage sweep shortest-first so the corridor table snowballs; unsolved problems then climb the ladder.",
+  "batch_jobs": 500,
+  "action_weights": {"cover": 6.0, "escalate": 0.5, "bidir": 0.3, "polish": 0.3, "resolve": 0.2},
+  "cover_preset": "gbfs_quick",
+  "ladder": ["gbfs_quick", "gbfs", "gbfs_eps", "gbfs_deep", "beam", "beam_wide"]
+}

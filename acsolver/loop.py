@@ -20,10 +20,12 @@ from . import db, engine, official, problems
 PRESETS: dict[str, dict] = {
     # exact optimum when the optimum is <= bidir_fwd + endgame radius
     "bidir": {"strategy": "bidir", "bidir_fwd": 6, "max_nodes": 6_000_000, "time_limit": 60},
+    "gbfs_quick": {"strategy": "gbfs", "max_nodes": 1_500_000, "time_limit": 10},
     "gbfs": {"strategy": "gbfs", "max_nodes": 4_000_000, "time_limit": 20},
+    "gbfs_eps": {"strategy": "gbfs", "eps": 0.1, "max_nodes": 4_000_000, "time_limit": 20},
     "gbfs_lam": {"strategy": "gbfs", "lam": 0.25, "max_nodes": 6_000_000, "time_limit": 30},
     "gbfs_noise": {"strategy": "gbfs", "noise": 3.0, "max_nodes": 4_000_000, "time_limit": 20},
-    "gbfs_deep": {"strategy": "gbfs", "max_nodes": 30_000_000, "time_limit": 240, "maxlen": 160},
+    "gbfs_deep": {"strategy": "gbfs", "max_nodes": 30_000_000, "time_limit": 240},
     "gbfs_model": {"strategy": "gbfs", "w_len": 0.3, "w_model": 1.0, "max_nodes": 4_000_000, "time_limit": 30},
     "beam": {"strategy": "beam", "beam_width": 2000, "max_nodes": 20_000_000, "time_limit": 30},
     "beam_wide": {"strategy": "beam", "beam_width": 20000, "max_nodes": 40_000_000, "time_limit": 120},
@@ -32,6 +34,11 @@ PRESETS: dict[str, dict] = {
              "max_nodes": 10**12},
     "anneal": {"strategy": "anneal", "T0": 1.5, "T1": 0.05, "walk_len": 2000, "time_limit": 10,
                "stop_first": 0, "max_nodes": 10**12},
+    # path-guided re-search: own best path in the corridor, depth-weighted
+    # GBFS, accept only strictly shorter solutions (bound = current best)
+    "guided": {"strategy": "gbfs", "lam": 0.5, "self_corridor": 1, "max_nodes": 3_000_000, "time_limit": 20},
+    "guided_beam": {"strategy": "beam", "beam_width": 3000, "self_corridor": 1, "max_nodes": 10_000_000,
+                    "time_limit": 30},
     # re-shorten the stored best path with larger balls
     "polish": {"strategy": "polish", "d1": 5, "d2": 5, "ball_budget": 60_000_000, "shorten_time": 120},
 }
@@ -90,6 +97,10 @@ def run_batch(con, batch_id: int, threads: int | None = None, endgame="default",
             polish_recs.append(rec)
         else:
             rec["params"] = {**SHORTEN_DEFAULT, **params}
+            if params.get("self_corridor"):
+                b = db.best(con, j["problem_id"])
+                if b is not None:
+                    rec["params"]["bound"] = b["length"]
             solve_recs.append(rec)
 
     gopts = {"shorten": 1, "emit_raw": 1}

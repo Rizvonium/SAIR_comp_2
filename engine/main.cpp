@@ -57,6 +57,9 @@ static void set_param(Params& P, ShortenParams& SP, const std::string& k, const 
   else if (k == "w_max") P.w_max = std::stod(v);
   else if (k == "w_min") P.w_min = std::stod(v);
   else if (k == "tie") P.tie = std::stoi(v);
+  else if (k == "bound") P.bound = std::stoi(v);
+  else if (k == "eps") P.eps = std::stod(v);
+  else if (k == "self_corridor") P.self_corridor = v != "0";
   else if (k == "stop_first") P.stop_first = v != "0";
   else if (k == "d1") SP.d1 = std::stoi(v);
   else if (k == "d2") SP.d2 = std::stoi(v);
@@ -250,7 +253,7 @@ int main(int argc, char** argv) {
         Ctx C;
         C.eg = &S.eg;
         C.cor = S.cor.loaded() ? &S.cor : nullptr;
-        C.self = owner_hash(id);
+        C.self = P.self_corridor ? 0 : owner_hash(id);
         C.mlp = &S.mlp;
         C.rng.seed(mix64(s ^ str_hash(id)));
         C.t0 = std::chrono::steady_clock::now();

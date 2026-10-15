@@ -79,6 +79,34 @@ def ms_signature(r0, r1):
     return None
 
 
+def _rotations(w):
+    out = set()
+    for v in (list(w), _inv(list(w))):
+        for k in range(len(v)):
+            out.add(tuple(v[k:] + v[:k]))
+    return out
+
+
+_BRAID = _rotations([1, 2, 1, -2, -1, -2])
+
+
+def family(r0, r1) -> str:
+    """Coarse family label: 'AK(n)' (x^n = y^(n+1), xyx = yxy), 'braid'
+    (contains the braid relator), 'MS(n)' (contains the Miller–Schupp
+    relator), else 'other'.  Up to relator order, rotation and inversion."""
+    for a, b in ((r0, r1), (r1, r0)):
+        if tuple(b) in _BRAID:
+            for n in range(1, 16):
+                if tuple(a) in _rotations([1] * n + [-2] * (n + 1)):
+                    return f"AK({n})"
+    if tuple(r0) in _BRAID or tuple(r1) in _BRAID:
+        return "braid"
+    ms = ms_signature(r0, r1)
+    if ms:
+        return f"MS({ms[0]})"
+    return "other"
+
+
 def features(p: dict) -> dict:
     r0, r1 = p["r0"], p["r1"]
     ex = [sum(1 if a == 1 else -1 if a == -1 else 0 for a in r) for r in (r0, r1)]
@@ -92,4 +120,5 @@ def features(p: dict) -> dict:
         "nx": sum(1 for a in r0 + r1 if abs(a) == 1), "ny": sum(1 for a in r0 + r1 if abs(a) == 2),
         "ms_n": (ms_signature(r0, r1) or (None,))[0],
         "ms_rel": (ms_signature(r0, r1) or (None, None))[1],
+        "family": family(r0, r1),
     }

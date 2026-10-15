@@ -36,6 +36,9 @@ struct Params {
   double w_cyc = 0.0;                 // weight of the cyclically reduced total length
   double w_max = 0.0, w_min = 0.0;    // weights of the longer / shorter relator length
   int tie = 0;                        // GBFS tie-break: 0 random, 1 newest, 2 oldest
+  int bound = 1 << 30;                // accept a solution only if shorter than this
+  double eps = 0.0;                   // epsilon-GBFS: expand a random open node with prob eps
+  bool self_corridor = false;         // let a problem use its own stored paths (path-guided re-search)
   bool stop_first = true;
   std::vector<std::vector<int>> macros;  // macro-moves, usable as single steps
 };
@@ -199,7 +202,7 @@ inline SearchResult search_gbfs(const State& start, const Params& P, Ctx& C) {
   SearchResult R;
   std::vector<int> fin;
   if (try_finish(start.r[0].data(), (int)start.r[0].size(), start.r[1].data(), (int)start.r[1].size(), C,
-                 fin)) {
+                 fin) && (int)fin.size() < P.bound) {
     R.solved = true;
     R.path = fin;
     return R;
@@ -225,6 +228,7 @@ inline SearchResult search_gbfs(const State& start, const Params& P, Ctx& C) {
   Mover mv;
   std::vector<Letter> cur, buf;
   long long expanded = 0;
+  std::vector<bool> closed;
   while (!pq.empty() && (long long)A.nodes.size() < P.max_nodes) {
     if ((++expanded & 1023) == 0 && C.elapsed() > P.time_limit) {
       R.note = "time";
@@ -234,8 +238,22 @@ inline SearchResult search_gbfs(const State& start, const Params& P, Ctx& C) {
       R.note = "memory";
       break;
     }
-    uint32_t idx = pq.top().idx;
-    pq.pop();
+    uint32_t idx = UINT32_MAX;
+    if (P.eps > 0 && C.uni() < P.eps) {  // epsilon-greedy: random open node
+      for (int tries = 0; tries < 8 && idx == UINT32_MAX; ++tries) {
+        uint32_t r = (uint32_t)(C.rng() % A.nodes.size());
+        if (r >= closed.size() || !closed[r]) idx = r;
+      }
+    }
+    if (idx == UINT32_MAX) {
+      idx = pq.top().idx;
+      pq.pop();
+      if (idx < closed.size() && closed[idx]) continue;  // already expanded via a random pick
+    }
+    if (P.eps > 0) {
+      if (closed.size() <= idx) closed.resize(A.nodes.size() + 1024, false);
+      closed[idx] = true;
+    }
     const auto nd = A.nodes[idx];
     cur.resize(nd.l0 + nd.l1 + 1);
     A.get(idx, cur.data());
@@ -261,7 +279,7 @@ inline SearchResult search_gbfs(const State& start, const Params& P, Ctx& C) {
       if (!H.insert(hash_state(b0, n0, b1, n1))) continue;
       int depth = nd.depth + dd;
       uint32_t ni = A.add(b0, n0, b1, n1, idx, m, depth);
-      if (try_finish(b0, n0, b1, n1, C, fin)) {
+      if (try_finish(b0, n0, b1, n1, C, fin) && depth + (int)fin.size() < P.bound) {
         R.solved = true;
         R.path = expand_codes(A.path_to(ni), P);
         R.path.insert(R.path.end(), fin.begin(), fin.end());
@@ -284,7 +302,7 @@ inline SearchResult search_beam(const State& start, const Params& P, Ctx& C) {
   SearchResult R;
   std::vector<int> fin;
   if (try_finish(start.r[0].data(), (int)start.r[0].size(), start.r[1].data(), (int)start.r[1].size(), C,
-                 fin)) {
+                 fin) && (int)fin.size() < P.bound) {
     R.solved = true;
     R.path = fin;
     return R;
@@ -328,7 +346,7 @@ inline SearchResult search_beam(const State& start, const Params& P, Ctx& C) {
         if (H.find(h) || !level.insert(h, 0)) continue;
         ++generated;
         uint32_t si = S.add(b0, n0, b1, n1, idx, m, depth);
-        if (try_finish(b0, n0, b1, n1, C, fin)) {
+        if (try_finish(b0, n0, b1, n1, C, fin) && depth + (int)fin.size() < P.bound) {
           std::vector<int> p = expand_codes(A.path_to(idx), P);
           std::vector<int> tail = expand_codes({m}, P);
           p.insert(p.end(), tail.begin(), tail.end());

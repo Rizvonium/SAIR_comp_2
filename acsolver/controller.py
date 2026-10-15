@@ -38,7 +38,7 @@ DEFAULTS = {
     "action_weights": {"cover": 1.0, "escalate": 1.0, "bidir": 0.5, "polish": 0.6, "resolve": 0.6},
     "cover_preset": "gbfs",
     "ladder": ["gbfs", "gbfs_noise", "beam", "gbfs_deep", "beam_wide"],
-    "resolve_presets": ["gbfs_lam", "beam", "gbfs_noise"],
+    "resolve_presets": ["guided", "gbfs_lam", "guided_beam", "gbfs_noise"],
     "bidir_max_len": 14,               # attempt exact search when best <= this
     "preset_overrides": {},            # preset -> {param: value}
     "use_macros": False,
@@ -217,6 +217,8 @@ def review(con, bid, stats, secs, cfg):
         export.write_snapshot(con)
         try:
             export.write_submission(con)
+            from . import stable
+            stable.write_stable_submission(con)
         except RuntimeError as e:  # never silently ship a rejected file
             db.add_insight(con, "controller", "alert", "submission export failed", str(e), bid)
             print("EXPORT FAILED:", e)

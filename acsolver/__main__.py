@@ -143,7 +143,9 @@ def main(argv=None):
     elif args.cmd == "export":
         n = export.write_snapshot(con)
         rep = export.write_submission(con, check=not args.no_check)
-        print(json.dumps({"snapshot_rows": n, **rep}, indent=1))
+        from . import stable
+        srep = stable.write_stable_submission(con, check=not args.no_check)
+        print(json.dumps({"snapshot_rows": n, "ac": rep, "stable": srep}, indent=1))
     elif args.cmd == "import":
         print(export.import_jsonl(con, args.file))
     elif args.cmd == "note":
