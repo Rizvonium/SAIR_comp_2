@@ -51,6 +51,52 @@ re-verified on import): `python3 -m acsolver import results/best_solutions.jsonl
 | `config/strategy.json` | analyst/AI steering of the controller |
 | `results/` | committed snapshot: best paths, submission files, insights, dashboard |
 
+## How the search works
+
+1. **Endgame table** (`make endgame R=8`): BFS from the target `(x, y)` to
+   radius 8 (24.6M states). Any search that touches it finishes with an exact
+   shortest suffix; it also makes bidirectional search exact up to length 14.
+2. **Corridor table**: every state on every known solution path (our raw and
+   shortened paths, plus the 424 published training certificates). The pool
+   is one big AC-connected family, so a search for one problem often walks
+   into another problem's corridor and finishes along it. Each problem
+   ignores its own paths unless explicitly asked (`self_corridor`).
+3. **Strategies** (presets in `acsolver/loop.py`): GBFS on total relator
+   length (best single heuristic measured), ε-GBFS, beam search, greedy-random
+   walks, annealing, bidirectional BFS (exact), and for solved problems:
+   `polish` (bigger shortening balls), `guided` (own best path as corridor +
+   depth-weighted GBFS, bound = current best) and `tail` (guided search from
+   an intermediate state, prefix spliced back).
+4. **Shortening** of every solution: cycle cut (subsumes inverse-pair
+   cancellation) → endgame/corridor truncation → ball-shortcut DP (every
+   path state gets a BFS ball; shortcuts of up to d1+d2 moves between any
+   two path states are combined optimally by DP and rebuilt exactly) →
+   repeat until no gain.
+5. **Verification**: the official verifier judges every candidate; only
+   `ok: true` paths are stored.
+
+## Controller: automatic policy + AI analyst
+
+* `acsolver/controller.py` (automatic, every batch): measures verified gain
+  per engine-hour for each action type (`cover`, `escalate`, `bidir`,
+  `polish`, `resolve`), allocates the next batch accordingly with an
+  exploration bonus, walks unsolved problems up an escalation ladder, and
+  writes its plan and review (with reasoning) to the `insights` table.
+* The AI analyst (Claude, in the session) reads the insight report and
+  benchmarks, forms hypotheses, tests them (`scripts/bench*.py`), records
+  conclusions with `python3 -m acsolver note`, and steers the controller by
+  editing `config/strategy.json` (weights, presets, ladder, model/macros).
+* Guardrails: neither touches the official verifier or data (read-only
+  submodule); every stored result passed the official verifier.
+
+## Stable AC (Phase 2)
+
+`acsolver/stable.py` derives `sac-` solutions from verified AC paths: the AC
+path truncated at its cheapest signed-permutation state plus the official
+stable finish (2–4 moves). On the training set this beats "AC path +
+[16, 15]" (14,219 vs 15,105 moves); all paths pass the official stable
+verifier. Export writes `results/stable_submission*.txt`.
+
 ## Engine correctness
 
 `tests/test_engine_crosscheck.py` is blocking: the engine's replay must match

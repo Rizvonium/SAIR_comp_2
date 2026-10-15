@@ -162,7 +162,13 @@ def mine(con, verbose=False, batch_id=None) -> dict:
         "strategies": strategy_stats(con),
     }
     db.add_insight(con, "miner", "stats", "insight mining", res, batch_id)
-    write_report(res)
+    notes = [dict(r) for r in con.execute(
+        "SELECT created_at, author, title, body FROM insights WHERE author='analyst' ORDER BY id")]
+    review = con.execute("SELECT body FROM insights WHERE author='controller' AND kind='review' "
+                         "ORDER BY id DESC LIMIT 1").fetchone()
+    res_for_report = dict(res, notes=notes,
+                          review=json.loads(review[0]).get("reasoning") if review else None)
+    write_report(res_for_report)
     if verbose:
         print(json.dumps({k: res[k] for k in ("solved", "total_moves", "profiles", "strategies")}, indent=1))
     return res
@@ -202,5 +208,12 @@ def write_report(res: dict):
         L.append(f"| {s} | {v.get('runs', '')} | {v.get('solve_rate', '')} | {v.get('mean_secs', '')} | "
                  f"{v.get('mean_len', '')} | {v.get('holds_records', 0)} | {v.get('mean_gap_to_best', '')} | "
                  f"{v.get('hits_record', '')} |")
+    if res.get("review"):
+        L.append("\n## Latest controller review")
+        L.append("```\n" + res["review"] + "\n```")
+    if res.get("notes"):
+        L.append("\n## Analyst notes (hypotheses and conclusions)")
+        for n in res["notes"]:
+            L.append(f"- **{n['title']}** ({n['created_at']}): {n['body']}")
     REPORT.parent.mkdir(exist_ok=True)
     REPORT.write_text("\n".join(L) + "\n")
