@@ -277,6 +277,7 @@ int main(int argc, char** argv) {
           w.integer("len", (long long)R.path.size()).ints("path", R.path);
         }
         if (P.strategy == "bidir") w.boolean("optimal", R.optimal).integer("lower_bound", R.lower_bound);
+        if (R.solved) w.str("via", C.via_corridor ? "corridor" : "endgame");
         w.integer("nodes", R.nodes).num("secs", C.elapsed()).str("note", R.note);
         return w.done();
       });

@@ -57,6 +57,7 @@ struct Ctx {
   const Endgame* eg = nullptr;
   const Corridor* cor = nullptr;  // optional: other problems' solution paths
   uint64_t self = 0;              // owner hash of the problem being searched
+  bool via_corridor = false;      // last successful finish came from the corridor table
   const MLP* mlp = nullptr;
   std::mt19937_64 rng;
   std::chrono::steady_clock::time_point t0;
@@ -120,6 +121,7 @@ inline bool try_finish(const Letter* a0, int n0, const Letter* a1, int n1, Ctx& 
   auto f = in_eg ? C.eg->finish(s) : C.cor->finish(s, C.self);
   if (!f) return false;
   fin = *f;
+  C.via_corridor = in_cor;
   return true;
 }
 

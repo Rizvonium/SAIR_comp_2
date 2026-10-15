@@ -155,6 +155,8 @@ def run_batch(con, batch_id: int, threads: int | None = None, endgame="default",
             res["path"] = pre + res["path"]
             if res.get("raw_path"):
                 res["raw_path"] = pre + res["raw_path"]
+        if res.get("via"):
+            res["note"] = ((res.get("note") or "") + " via=" + res["via"]).strip()
         verdict = None
         if res.get("solved"):
             verdict = official.verify_one(j["problem_id"], res["path"], problems.manifest_for(j["problem_id"]))
