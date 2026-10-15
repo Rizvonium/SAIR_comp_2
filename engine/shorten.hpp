@@ -130,10 +130,68 @@ inline bool reaches_target(const State& start, const std::vector<int>& path) {
   return is_target(s);
 }
 
-// Cycle cut + endgame truncation.
+// Commutation canonicalization (exact).  Moves that only invert/conjugate
+// r0 (0, 6..9) commute with those that only invert/conjugate r1 (1,
+// 10..13); inversion commutes with conjugation; conjugations compose like
+// the free group (c_g o c_h = c_gh on reduced words).  So every maximal run
+// of such moves equals: [0]^p0, conjugation by the reduced word u0, [1]^p1,
+// conjugation by u1.  This cancels inverse pairs at any distance.
+inline bool is_local_move(int m) { return m == 0 || m == 1 || m >= 6; }
+
+inline void conj_moves(const std::vector<Letter>& u, int base, std::vector<int>& out) {
+  // u is the composite conjugator (outermost letter first); apply innermost first
+  for (auto it = u.rbegin(); it != u.rend(); ++it) {
+    Letter g = *it;
+    out.push_back(base + (g == 1 ? 0 : g == -1 ? 1 : g == 2 ? 2 : 3));
+  }
+}
+
+inline std::vector<int> commute_reduce(const State& start, const std::vector<int>& path) {
+  std::vector<int> out;
+  State s = start;
+  size_t i = 0;
+  while (i < path.size()) {
+    if (!is_local_move(path[i])) {
+      out.push_back(path[i]);
+      apply_move(s, path[i]);
+      ++i;
+      continue;
+    }
+    size_t j = i;
+    int par[2] = {0, 0};
+    std::vector<Letter> u[2];
+    while (j < path.size() && is_local_move(path[j])) {
+      int m = path[j];
+      if (m <= 1) par[m] ^= 1;
+      else {
+        int r = m >= 10 ? 1 : 0;
+        Letter g = CONJ[(m - 6) & 3];
+        if (!u[r].empty() && u[r].front() == -g) u[r].erase(u[r].begin());
+        else u[r].insert(u[r].begin(), g);
+      }
+      ++j;
+    }
+    std::vector<int> rep;
+    if (par[0]) rep.push_back(0);
+    conj_moves(u[0], 6, rep);
+    if (par[1]) rep.push_back(1);
+    conj_moves(u[1], 10, rep);
+    // exactness check by replay; keep the original run if anything differs
+    State a = s, b = s;
+    for (size_t k = i; k < j; ++k) apply_move(a, path[k]);
+    for (int m : rep) apply_move(b, m);
+    if (rep.size() < j - i && a == b) out.insert(out.end(), rep.begin(), rep.end());
+    else out.insert(out.end(), path.begin() + i, path.begin() + j);
+    s = a;
+    i = j;
+  }
+  return out;
+}
+
+// Commutation canonicalization + cycle cut + endgame/corridor truncation.
 inline std::vector<int> cheap_shorten(const State& start, std::vector<int> path, const Endgame& eg,
                                       const Corridor* cor = nullptr, uint64_t self = 0) {
-  path = cut_cycles(start, path);
+  path = cut_cycles(start, commute_reduce(start, path));
   auto st = states_along(start, path);
   size_t best_i = path.size();
   size_t best_len = path.size();

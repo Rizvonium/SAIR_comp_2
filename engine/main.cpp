@@ -193,6 +193,15 @@ int main(int argc, char** argv) {
       }
       return 0;
     }
+    if (cmd == "commute") {  // exact commutation canonicalization of any path
+      for (auto& l : read_lines(std::cin)) {
+        auto v = mj::parse(l);
+        State s = state_of(v);
+        auto p = commute_reduce(s, v["path"].as_ints());
+        std::cout << mj::ObjWriter().ints("path", p).done() << "\n";
+      }
+      return 0;
+    }
     if (cmd == "random-test") {
       // Emit random start states (freely reduced) and random move paths, with
       // the engine's final state, for cross-checking against the verifier.
