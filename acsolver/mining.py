@@ -99,13 +99,17 @@ def length_profiles(paths: dict):
 
 def by_feature(con, paths: dict):
     P = problems.ac_problems()
+    from . import ms1190
+    msmap = ms1190.pool_map()
     rows = collections.defaultdict(lambda: {"n": 0, "solved": 0, "lens": []})
     fam = collections.defaultdict(lambda: {"n": 0, "solved": 0, "lens": []})
+    src = collections.defaultdict(lambda: {"n": 0, "solved": 0, "lens": []})
     for pid, p in P.items():
         f = problems.features(p)
         b = f["total"] // 4 * 4
         key = f"{b:02d}-{b + 3:02d}"
-        for d, k in ((rows, key), (fam, f["family"])):
+        origin = ("MS-1190 " + msmap[pid]["status_at_freeze"]) if pid in msmap else "SAIR draw"
+        for d, k in ((rows, key), (fam, f["family"]), (src, origin)):
             d[k]["n"] += 1
             if pid in paths:
                 d[k]["solved"] += 1
@@ -115,7 +119,7 @@ def by_feature(con, paths: dict):
         return {k: {"n": v["n"], "solved": v["solved"], "rate": round(v["solved"] / v["n"], 3),
                     "mean_len": round(statistics.mean(v["lens"]), 2) if v["lens"] else None}
                 for k, v in sorted(d.items())}
-    return {"by_total_length": summarize(rows), "by_family": summarize(fam)}
+    return {"by_total_length": summarize(rows), "by_family": summarize(fam), "by_origin": summarize(src)}
 
 
 HARD_FEATURES = ["total", "min_len", "max_len", "syl0", "syl1", "nx", "ny", "ex0", "ey0", "ex1", "ey1",
@@ -221,6 +225,10 @@ def write_report(res: dict):
     L.append("\n## Solve rate by initial total relator length")
     L.append("| total length | problems | solved | rate | mean best length |\n|---|---:|---:|---:|---:|")
     for k, v in res["features"]["by_total_length"].items():
+        L.append(f"| {k} | {v['n']} | {v['solved']} | {v['rate']} | {v['mean_len']} |")
+    L.append("\n## Origin (MS-1190 status at freeze vs SAIR draw)")
+    L.append("| origin | problems | solved | rate | mean best length |\n|---|---:|---:|---:|---:|")
+    for k, v in res["features"].get("by_origin", {}).items():
         L.append(f"| {k} | {v['n']} | {v['solved']} | {v['rate']} | {v['mean_len']} |")
     L.append("\n## Families")
     L.append("| family | problems | solved | rate | mean best length |\n|---|---:|---:|---:|---:|")
