@@ -1,0 +1,13 @@
+{
+ "solutions": 10,
+ "parts": [
+  {
+   "file": "part_01.txt",
+   "lines": 10,
+   "exit": 0,
+   "accepted": true,
+   "ok": 10,
+   "failed": []
+  }
+ ]
+}
