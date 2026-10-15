@@ -118,6 +118,41 @@ def by_feature(con, paths: dict):
     return {"by_total_length": summarize(rows), "by_family": summarize(fam)}
 
 
+HARD_FEATURES = ["total", "min_len", "max_len", "syl0", "syl1", "nx", "ny", "ex0", "ey0", "ex1", "ey1",
+                 "cyc0", "cyc1", "ms_n"]
+
+
+def hardness_model(con, min_attempts=1):
+    """Logistic regression solved ~ features over attempted problems.
+    Returns standardized coefficients (positive = easier) and accuracy."""
+    import numpy as np
+    P = problems.ac_problems()
+    best = db.best_lengths(con)
+    rows = [r["problem_id"] for r in con.execute("SELECT problem_id FROM problem_status WHERE attempts >= ? "
+                                                  "AND problem_id LIKE 'ac-%'", (min_attempts,))]
+    if len(rows) < 200:
+        return {}
+    X, y = [], []
+    for pid in rows:
+        f = problems.features(P[pid])
+        X.append([float(abs(f[k])) if f[k] is not None else 0.0 for k in HARD_FEATURES]
+                 + [1.0 if f["ms_n"] else 0.0])
+        y.append(1.0 if pid in best else 0.0)
+    X, y = np.array(X), np.array(y)
+    mu, sd = X.mean(0), X.std(0) + 1e-9
+    Z = np.hstack([(X - mu) / sd, np.ones((len(X), 1))])
+    w = np.zeros(Z.shape[1])
+    for _ in range(3000):
+        p = 1 / (1 + np.exp(-Z @ w))
+        w -= 0.1 * (Z.T @ (p - y) / len(y) + 1e-3 * np.r_[w[:-1], 0])
+    acc = float((((Z @ w) > 0) == (y > 0.5)).mean())
+    names = HARD_FEATURES + ["has_ms_relator"]
+    coef = sorted(zip(names, w[:-1].tolist()), key=lambda t: -abs(t[1]))
+    return {"n": len(y), "solve_rate": float(y.mean()), "accuracy": acc,
+            "base_accuracy": float(max(y.mean(), 1 - y.mean())),
+            "coefficients": [(k, round(v, 3)) for k, v in coef]}
+
+
 def strategy_stats(con):
     out = {}
     for r in con.execute(
@@ -160,6 +195,7 @@ def mine(con, verbose=False, batch_id=None) -> dict:
         "profiles": length_profiles(paths),
         "features": by_feature(con, paths),
         "strategies": strategy_stats(con),
+        "hardness": hardness_model(con),
     }
     db.add_insight(con, "miner", "stats", "insight mining", res, batch_id)
     notes = [dict(r) for r in con.execute(
@@ -197,6 +233,14 @@ def write_report(res: dict):
         L.append(f"- mean peak / initial total length: {pr['peak_over_initial_mean']:.2f}")
         L.append(f"- mean relative position of the peak: {pr['peak_position_mean']:.2f}")
         L.append(f"- mean profile (length / initial, 21 points along the path): {pr['mean_profile_relative']}")
+    hm = res.get("hardness") or {}
+    if hm:
+        L.append("\n## What predicts solvability (logistic regression, standardized coefficients)")
+        L.append(f"{hm['n']} attempted problems, solve rate {hm['solve_rate']:.1%}, in-sample accuracy "
+                 f"{hm['accuracy']:.1%} (majority baseline {hm['base_accuracy']:.1%}). Positive = easier.")
+        L.append("| feature | coefficient |\n|---|---:|")
+        for k, v in hm["coefficients"]:
+            L.append(f"| {k} | {v} |")
     L.append("\n## Macro-move candidates (frequent n-grams)")
     L.append("| moves | occurrences |\n|---|---:|")
     for m in res["macros"]:
