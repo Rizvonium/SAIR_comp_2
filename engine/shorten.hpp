@@ -131,17 +131,24 @@ inline bool reaches_target(const State& start, const std::vector<int>& path) {
 }
 
 // Cycle cut + endgame truncation.
-inline std::vector<int> cheap_shorten(const State& start, std::vector<int> path, const Endgame& eg) {
+inline std::vector<int> cheap_shorten(const State& start, std::vector<int> path, const Endgame& eg,
+                                      const Corridor* cor = nullptr, uint64_t self = 0) {
   path = cut_cycles(start, path);
   auto st = states_along(start, path);
   size_t best_i = path.size();
   size_t best_len = path.size();
+  bool best_cor = false;
   for (size_t i = 0; i < st.size(); ++i) {
     int d = eg.dist(st[i]);
-    if (d >= 0 && i + d < best_len) best_len = i + d, best_i = i;
+    if (d >= 0 && i + d < best_len) best_len = i + d, best_i = i, best_cor = false;
+    if (cor) {
+      const State& x = st[i];
+      int c = cor->dist(x.r[0].data(), (int)x.r[0].size(), x.r[1].data(), (int)x.r[1].size(), self);
+      if (c >= 0 && i + c < best_len) best_len = i + c, best_i = i, best_cor = true;
+    }
   }
   if (best_len < path.size()) {
-    auto fin = eg.finish(st[best_i]);
+    auto fin = best_cor ? cor->finish(st[best_i], self) : eg.finish(st[best_i]);
     if (fin) {
       std::vector<int> np(path.begin(), path.begin() + best_i);
       np.insert(np.end(), fin->begin(), fin->end());
@@ -254,12 +261,12 @@ inline std::vector<int> ball_round(const State& start, const std::vector<int>& p
 inline std::vector<int> shorten(const State& start, std::vector<int> path, const Endgame& eg,
                                 const ShortenParams& SP, Ctx& C) {
   if (!reaches_target(start, path)) return path;
-  path = cheap_shorten(start, path, eg);
+  path = cheap_shorten(start, path, eg, C.cor, C.self);
   for (int round = 0; round < SP.max_rounds; ++round) {
     if (C.elapsed() > SP.time_limit) break;
     auto np = ball_round(start, path, eg, SP, C);
     if (np.size() >= path.size()) break;
-    path = cheap_shorten(start, np, eg);
+    path = cheap_shorten(start, np, eg, C.cor, C.self);
   }
   return path;
 }

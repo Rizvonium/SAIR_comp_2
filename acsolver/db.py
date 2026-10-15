@@ -141,6 +141,9 @@ def connect(path: Path | str = DB_PATH) -> sqlite3.Connection:
     con.execute("PRAGMA journal_mode=WAL")
     con.execute("PRAGMA synchronous=FULL")
     con.executescript(SCHEMA)
+    cols = {r[1] for r in con.execute("PRAGMA table_info(runs)")}
+    if "raw_path" not in cols:  # migration: pre-shortening path (corridor source)
+        con.execute("ALTER TABLE runs ADD COLUMN raw_path TEXT")
     return con
 
 
@@ -205,13 +208,14 @@ def record_run(con, *, batch_id, job_idx, problem_id, strategy, params, seed, st
     with con:
         cur = con.execute(
             "INSERT INTO runs(batch_id, problem_id, strategy, params, seed, engine_rev, started_at, ended_at,"
-            " steps, secs, solved, raw_len, path_len, path, verified, verify_code, note)"
-            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            " steps, secs, solved, raw_len, path_len, path, verified, verify_code, note, raw_path)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (batch_id, problem_id, strategy, json.dumps(params, sort_keys=True), seed, engine_rev(),
              started_at, now(), result.get("nodes"), result.get("secs"), int(solved),
              result.get("raw_len"), len(path) if path is not None else None,
              json.dumps(path) if path is not None else None, verified,
-             None if verdict is None else verdict.get("code"), result.get("note")))
+             None if verdict is None else verdict.get("code"), result.get("note"),
+             json.dumps(result["raw_path"]) if solved and verified and result.get("raw_path") else None))
         run_id = cur.lastrowid
         if solved and not verified:
             outcome = "rejected"

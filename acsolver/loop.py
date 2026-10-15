@@ -92,7 +92,10 @@ def run_batch(con, batch_id: int, threads: int | None = None, endgame="default",
             rec["params"] = {**SHORTEN_DEFAULT, **params}
             solve_recs.append(rec)
 
-    gopts = {"shorten": 1}
+    gopts = {"shorten": 1, "emit_raw": 1}
+    cor = write_corridors(con)
+    if cor:
+        gopts["corridors"] = str(cor)
     if model:
         gopts["model"] = str(model)
     if macros:
@@ -102,7 +105,8 @@ def run_batch(con, batch_id: int, threads: int | None = None, endgame="default",
         if solve_recs:
             yield from engine.stream("solve", solve_recs, params=gopts, endgame=endgame, threads=threads)
         if polish_recs:
-            for res in engine.stream("shorten", polish_recs, params={}, endgame=endgame, threads=threads):
+            for res in engine.stream("shorten", polish_recs, params={"corridors": str(cor)} if cor else {},
+                                     endgame=endgame, threads=threads):
                 if "error" in res:
                     yield res
                     continue
@@ -135,6 +139,29 @@ def run_batch(con, batch_id: int, threads: int | None = None, endgame="default",
     if not db.pending_jobs(con, batch_id):
         db.finish_batch(con, batch_id)
     return stats
+
+
+CORRIDORS = engine.DATA / "corridors.jsonl"
+
+
+def write_corridors(con, max_raw_len: int = 4000):
+    """All verified best paths plus the raw (pre-shortening) paths of
+    verified runs, as {id, r0, r1, path} lines for the engine's corridor
+    table.  Raw paths visit many more states, so they widen the corridor."""
+    allp = {**problems.ac_problems(), **problems.training_problems()}
+    rows = con.execute("SELECT problem_id, path FROM best_solutions").fetchall()
+    raws = con.execute("SELECT problem_id, raw_path FROM runs WHERE verified=1 AND raw_path IS NOT NULL "
+                       "AND raw_len <= ?", (max_raw_len,)).fetchall()
+    if not rows:
+        return None
+    tmp = CORRIDORS.with_suffix(".tmp")
+    with open(tmp, "w") as f:
+        for pid, path in list(rows) + list(raws):
+            p = allp.get(pid)
+            if p:
+                f.write(json.dumps({"id": pid, "r0": p["r0"], "r1": p["r1"], "path": json.loads(path)}) + "\n")
+    tmp.replace(CORRIDORS)
+    return CORRIDORS
 
 
 def submit_batch(con, label: str, jobs: list[dict], config: dict | None = None, **kw) -> tuple[int, dict]:

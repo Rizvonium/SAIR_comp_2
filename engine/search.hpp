@@ -14,6 +14,7 @@
 #include <queue>
 #include <random>
 
+#include "corridor.hpp"
 #include "features.hpp"
 
 namespace ac {
@@ -33,6 +34,8 @@ struct Params {
   int bidir_fwd = 6;
   double w_len = 1.0, w_model = 0.0;  // score = w_len*total + w_cyc*cyclic + w_model*model
   double w_cyc = 0.0;                 // weight of the cyclically reduced total length
+  double w_max = 0.0, w_min = 0.0;    // weights of the longer / shorter relator length
+  int tie = 0;                        // GBFS tie-break: 0 random, 1 newest, 2 oldest
   bool stop_first = true;
   std::vector<std::vector<int>> macros;  // macro-moves, usable as single steps
 };
@@ -49,6 +52,8 @@ struct SearchResult {
 
 struct Ctx {
   const Endgame* eg = nullptr;
+  const Corridor* cor = nullptr;  // optional: other problems' solution paths
+  uint64_t self = 0;              // owner hash of the problem being searched
   const MLP* mlp = nullptr;
   std::mt19937_64 rng;
   std::chrono::steady_clock::time_point t0;
@@ -89,6 +94,8 @@ inline std::vector<int> expand_codes(const std::vector<int>& codes, const Params
 inline double score_state(const Letter* a0, int n0, const Letter* a1, int n1, const Params& P, Ctx& C) {
   double s = P.w_len * (n0 + n1);
   if (P.w_cyc != 0) s += P.w_cyc * ((n0 - cyc_slack(a0, n0)) + (n1 - cyc_slack(a1, n1)));
+  if (P.w_max != 0) s += P.w_max * std::max(n0, n1);
+  if (P.w_min != 0) s += P.w_min * std::min(n0, n1);
   if (P.w_model != 0 && C.mlp && C.mlp->loaded()) {
     float f[NFEAT];
     compute_features(a0, n0, a1, n1, C.eg, f);
@@ -101,17 +108,93 @@ inline int cap_of(const Params& P) { return P.maxlen > 0 ? P.maxlen : 10000; }
 
 // Try to finish from a state; returns true and fills `fin` on success.
 inline bool try_finish(const Letter* a0, int n0, const Letter* a1, int n1, Ctx& C, std::vector<int>& fin) {
-  if (C.eg->dist(a0, n0, a1, n1) < 0) return false;
+  bool in_eg = C.eg->dist(a0, n0, a1, n1) >= 0;
+  bool in_cor = !in_eg && C.cor && C.cor->dist(a0, n0, a1, n1, C.self) >= 0;
+  if (!in_eg && !in_cor) return false;
   State s;
   s.r[0].assign(a0, a0 + n0);
   s.r[1].assign(a1, a1 + n1);
-  auto f = C.eg->finish(s);
+  auto f = in_eg ? C.eg->finish(s) : C.cor->finish(s, C.self);
   if (!f) return false;
   fin = *f;
   return true;
 }
 
 // -------------------------------------------------------------------------
+// Compact storage for GBFS: words packed 2 bits per letter, a key-only hash
+// set and 8-byte heap items (~50 bytes/node instead of ~110).
+struct PackedArena {
+  struct PNode {
+    uint32_t off, parent;
+    uint16_t l0, l1, depth;
+    uint8_t move;
+  };
+  std::vector<uint8_t> bytes;
+  std::vector<PNode> nodes;
+  static constexpr Letter DEC[4] = {1, -1, 2, -2};
+  bool full() const { return bytes.size() > 0xF0000000ULL; }
+  uint32_t add(const Letter* a0, int n0, const Letter* a1, int n1, uint32_t parent, int move, int depth) {
+    PNode nd{(uint32_t)bytes.size(), parent, (uint16_t)n0, (uint16_t)n1, (uint16_t)depth, (uint8_t)move};
+    size_t at = bytes.size();
+    bytes.resize(at + (n0 + n1 + 3) / 4, 0);
+    uint8_t* b = bytes.data() + at;
+    int k = 0;
+    for (int i = 0; i < n0; ++i, ++k) b[k >> 2] |= (uint8_t)(code2(a0[i]) << ((k & 3) * 2));
+    for (int i = 0; i < n1; ++i, ++k) b[k >> 2] |= (uint8_t)(code2(a1[i]) << ((k & 3) * 2));
+    nodes.push_back(nd);
+    return (uint32_t)(nodes.size() - 1);
+  }
+  // decode node i into out (r0 then r1 contiguous)
+  void get(uint32_t i, Letter* out) const {
+    const PNode& nd = nodes[i];
+    const uint8_t* b = bytes.data() + nd.off;
+    int n = nd.l0 + nd.l1;
+    for (int k = 0; k < n; ++k) out[k] = DEC[(b[k >> 2] >> ((k & 3) * 2)) & 3];
+  }
+  std::vector<int> path_to(uint32_t i) const {
+    std::vector<int> p;
+    while (nodes[i].parent != UINT32_MAX) {
+      p.push_back(nodes[i].move);
+      i = nodes[i].parent;
+    }
+    std::reverse(p.begin(), p.end());
+    return p;
+  }
+};
+
+struct HashSet {
+  std::vector<uint64_t> keys;
+  size_t mask = 0, count = 0;
+  explicit HashSet(size_t cap = 1 << 16) {
+    size_t c = 16;
+    while (c < cap) c <<= 1;
+    keys.assign(c, 0);
+    mask = c - 1;
+  }
+  bool insert(uint64_t k) {
+    if ((count + 1) * 10 > keys.size() * 7) grow();
+    size_t i = k & mask;
+    while (true) {
+      if (keys[i] == k) return false;
+      if (keys[i] == 0) {
+        keys[i] = k;
+        ++count;
+        return true;
+      }
+      i = (i + 1) & mask;
+    }
+  }
+  void grow() {
+    std::vector<uint64_t> old;
+    old.swap(keys);
+    keys.assign(old.size() * 2, 0);
+    mask = keys.size() - 1;
+    count = 0;
+    for (uint64_t k : old)
+      if (k) insert(k);
+  }
+};
+
 inline SearchResult search_gbfs(const State& start, const Params& P, Ctx& C) {
   SearchResult R;
   std::vector<int> fin;
@@ -121,36 +204,47 @@ inline SearchResult search_gbfs(const State& start, const Params& P, Ctx& C) {
     R.path = fin;
     return R;
   }
-  Arena A;
-  HashMap H(1 << 16);
+  PackedArena A;
+  HashSet H(1 << 16);
   A.add(start.r[0].data(), (int)start.r[0].size(), start.r[1].data(), (int)start.r[1].size(), UINT32_MAX, 255, 0);
-  H.insert(hash_state(start), 0);
+  H.insert(hash_state(start));
   struct Item {
     float key;
-    uint32_t tie, idx;
-    bool operator<(const Item& o) const { return key != o.key ? key > o.key : tie > o.tie; }
+    uint32_t idx;
   };
-  std::priority_queue<Item> pq;
-  pq.push({0, 0, 0});
+  // tie: 0 = random (tiny key noise), 1 = newest first, 2 = oldest first
+  const int tie = P.tie;
+  auto cmp = [tie](const Item& a, const Item& b) {
+    if (a.key != b.key) return a.key > b.key;
+    return tie == 2 ? a.idx > b.idx : a.idx < b.idx;
+  };
+  std::priority_queue<Item, std::vector<Item>, decltype(cmp)> pq(cmp);
+  pq.push({0, 0});
   const int cap = cap_of(P);
   const int nm = NUM_MOVES + (int)P.macros.size();
   Mover mv;
-  std::vector<Letter> buf;
+  std::vector<Letter> cur, buf;
   long long expanded = 0;
   while (!pq.empty() && (long long)A.nodes.size() < P.max_nodes) {
     if ((++expanded & 1023) == 0 && C.elapsed() > P.time_limit) {
       R.note = "time";
       break;
     }
+    if (A.full()) {
+      R.note = "memory";
+      break;
+    }
     uint32_t idx = pq.top().idx;
     pq.pop();
-    const Node nd = A.nodes[idx];
+    const auto nd = A.nodes[idx];
+    cur.resize(nd.l0 + nd.l1 + 1);
+    A.get(idx, cur.data());
+    const Letter* a0 = cur.data();
+    const Letter* a1 = cur.data() + nd.l0;
     for (int m = 0; m < nm; ++m) {
       if (m < NUM_MOVES && nd.move < NUM_MOVES && m == INVERSE[nd.move]) continue;
       const Letter *b0, *b1;
       int n0, n1;
-      const Letter* a0 = A.w0(idx);
-      const Letter* a1 = A.w1(idx);
       int dd = 1;
       if (m < NUM_MOVES) {
         buf.resize(nd.l0 + nd.l1 + 2);
@@ -164,12 +258,9 @@ inline SearchResult search_gbfs(const State& start, const Params& P, Ctx& C) {
         dd = (int)P.macros[m - NUM_MOVES].size();
       }
       if (n0 + n1 > cap) continue;
-      uint64_t h = hash_state(b0, n0, b1, n1);
-      uint32_t ni = (uint32_t)A.nodes.size();
-      if (!H.insert(h, ni)) continue;
-      int depth = A.nodes[idx].depth + dd;
-      A.add(b0, n0, b1, n1, idx, m, depth);
-      b0 = A.w0(ni), b1 = A.w1(ni);  // arena may have reallocated
+      if (!H.insert(hash_state(b0, n0, b1, n1))) continue;
+      int depth = nd.depth + dd;
+      uint32_t ni = A.add(b0, n0, b1, n1, idx, m, depth);
       if (try_finish(b0, n0, b1, n1, C, fin)) {
         R.solved = true;
         R.path = expand_codes(A.path_to(ni), P);
@@ -179,7 +270,8 @@ inline SearchResult search_gbfs(const State& start, const Params& P, Ctx& C) {
       }
       double key = score_state(b0, n0, b1, n1, P, C) + P.lam * depth;
       if (P.noise > 0) key += P.noise * C.uni();
-      pq.push({(float)key, (uint32_t)(C.rng() & 0xffffffff), ni});
+      if (tie == 0) key += 1e-3 * C.uni();
+      pq.push({(float)key, ni});
     }
   }
   R.nodes = A.nodes.size();

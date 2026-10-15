@@ -54,6 +54,9 @@ static void set_param(Params& P, ShortenParams& SP, const std::string& k, const 
   else if (k == "w_len") P.w_len = std::stod(v);
   else if (k == "w_model") P.w_model = std::stod(v);
   else if (k == "w_cyc") P.w_cyc = std::stod(v);
+  else if (k == "w_max") P.w_max = std::stod(v);
+  else if (k == "w_min") P.w_min = std::stod(v);
+  else if (k == "tie") P.tie = std::stoi(v);
   else if (k == "stop_first") P.stop_first = v != "0";
   else if (k == "d1") SP.d1 = std::stoi(v);
   else if (k == "d2") SP.d2 = std::stoi(v);
@@ -62,7 +65,7 @@ static void set_param(Params& P, ShortenParams& SP, const std::string& k, const 
   else if (k == "shorten_time") SP.time_limit = std::stod(v);
   // flags consumed elsewhere
   else if (k == "endgame" || k == "model" || k == "macros" || k == "threads" || k == "seed" || k == "shorten" ||
-           k == "radius" || k == "out" || k == "n" || k == "len")
+           k == "radius" || k == "out" || k == "n" || k == "len" || k == "corridors" || k == "emit_raw")
     ;
   else throw std::runtime_error("unknown parameter " + k);
 }
@@ -102,6 +105,7 @@ static std::vector<std::string> read_lines(std::istream& in) {
 
 struct Shared {
   Endgame eg;
+  Corridor cor;
   MLP mlp;
   std::vector<std::vector<int>> macros;
 };
@@ -112,6 +116,10 @@ static void load_shared(Shared& S, std::map<std::string, std::string>& F) {
     fprintf(stderr, "endgame radius %d, %zu states\n", S.eg.radius, S.eg.map.size());
   }
   if (F.count("model")) S.mlp.load(F["model"]);
+  if (F.count("corridors")) {
+    size_t n = S.cor.load(F["corridors"]);
+    fprintf(stderr, "corridors: %zu paths, %zu states\n", S.cor.paths.size(), n);
+  }
   if (F.count("macros")) {
     std::ifstream f(F["macros"]);
     for (auto& l : read_lines(f)) {
@@ -241,6 +249,8 @@ int main(int argc, char** argv) {
         State st = state_of(v);
         Ctx C;
         C.eg = &S.eg;
+        C.cor = S.cor.loaded() ? &S.cor : nullptr;
+        C.self = owner_hash(id);
         C.mlp = &S.mlp;
         C.rng.seed(mix64(s ^ str_hash(id)));
         C.t0 = std::chrono::steady_clock::now();
@@ -255,6 +265,7 @@ int main(int argc, char** argv) {
         w.boolean("solved", R.solved);
         if (R.solved) {
           w.integer("raw_len", (long long)R.path.size());
+          if (F.count("emit_raw")) w.ints("raw_path", R.path);
           if (do_shorten) {
             Ctx C2 = C;
             C2.t0 = std::chrono::steady_clock::now();
@@ -279,6 +290,8 @@ int main(int argc, char** argv) {
         auto path = v["path"].as_ints();
         Ctx C;
         C.eg = &S.eg;
+        C.cor = S.cor.loaded() ? &S.cor : nullptr;
+        C.self = owner_hash(v["id"].as_str());
         C.t0 = std::chrono::steady_clock::now();
         bool valid = reaches_target(st, path);
         auto np = valid ? shorten(st, path, S.eg, SP, C) : path;
