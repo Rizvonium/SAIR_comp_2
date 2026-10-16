@@ -30,6 +30,35 @@ python3 -m acsolver dashboard   # results/dashboard.html
 A lost database can be rebuilt from the committed snapshot (every path is
 re-verified on import): `python3 -m acsolver import results/best_solutions.jsonl`.
 
+## Running it (here or on any Linux box)
+
+```sh
+git clone --recurse-submodules <this repo> && cd SAIR_comp_2
+make && make endgame R=8 && make trivial L=20      # engine + shared tables (~1 min total)
+python3 -m acsolver import results/best_solutions.jsonl   # restore verified results into a fresh DB
+
+scripts/run_forever.sh          # continuous loop: controller batches (cflood ladder), Aut-orbit transport,
+                                # shortening, official verification, export; commits results/ every 3 iterations
+touch data/STOP                 # graceful stop after the current iteration (resumable at any time)
+
+python3 -m acsolver status      # solved count, totals, recent batches
+python3 -m acsolver transport   # one-off Aut-orbit transport pass
+python3 -m acsolver batch --preset cflood_deep --unsolved --limit 200   # manual targeted batch
+python3 -m acsolver export      # rebuild submission files (each part checked by the official CLI)
+```
+
+Where results live:
+
+| Path | What |
+|---|---|
+| `data/acsolver.sqlite` | full database (runs, best_solutions, improvements, insights); not committed |
+| `results/best_solutions.jsonl` | every verified best path (committed; re-import with `acsolver import`) |
+| `results/submission_parts/part_NN.txt` | **upload these** (≤500 lines each, official CLI exit 0) |
+| `results/submission.txt` | all AC best paths in one file (reference; too many lines to upload as-is) |
+| `results/stable_submission_parts/` | Stable AC (`sac-`) upload files |
+| `results/dashboard.html` | dashboard; `results/insights.md` insight report |
+| `data/run_forever.log` | loop log |
+
 ## Layout
 
 | Path | Contents |
