@@ -15,6 +15,9 @@ Action types
   polish    re-shorten stored best paths with bigger balls
   resolve   solved problems re-searched with a different strategy/seed
             (diverse paths shorten to different lengths)
+  transport (after every batch, not planned as jobs) Aut(F2)-orbit
+            transport: every new or improved record is carried to the
+            other problems of its orbit (acsolver.transport), snowballing
 
 Steering: ``config/strategy.json`` (written by a human or AI analyst) is
 merged over DEFAULTS each iteration, so the analyst can change presets,
@@ -46,6 +49,8 @@ DEFAULTS = {
     "retrain_every": 5,                # batches
     "mine_every": 1,
     "export_every": 1,
+    "transport": True,                 # run orbit transport after every batch
+    "transport_budget": 300,           # seconds per post-batch transport run
 }
 
 
@@ -182,7 +187,30 @@ def run_loop(con, iterations=1, threads=None):
         t0 = time.time()
         bid = db.create_batch(con, "controller", meta, jobs)
         stats = loop.run_batch(con, bid, threads=threads, macros=macros, model=model)
+        if cfg.get("transport"):
+            run_transport(con, cfg, threads=threads)
         review(con, bid, stats, time.time() - t0, cfg)
+
+
+def run_transport(con, cfg, threads=None):
+    """Action 'transport': cheap snowball after every batch.  Only orbits
+    containing a problem whose record changed since the previous transport
+    run are revisited (the first run covers the whole pool).  Results are
+    recorded in a batch of their own (label 'transport', action
+    'transport'), so action_yield measures them like any other action."""
+    from . import transport
+    first = con.execute("SELECT COUNT(*) FROM insights WHERE author='transport' AND kind='state'"
+                        ).fetchone()[0] == 0
+    try:
+        st = transport.transport_all(con, only_changed=not first, threads=min(threads or 2, 2),
+                                     time_budget=cfg.get("transport_budget"), verbose=True)
+    except RuntimeError as e:  # an engine failure must not stop the loop
+        db.add_insight(con, "controller", "alert", "transport failed", str(e))
+        print("TRANSPORT FAILED:", e)
+        return None
+    print(f"transport: new={st['new']} improved={st['improved']} moves_saved={st['moves_saved']} "
+          f"targets={st['targets']} in {st['secs']}s", flush=True)
+    return st
 
 
 def review(con, bid, stats, secs, cfg):

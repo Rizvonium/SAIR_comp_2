@@ -44,6 +44,7 @@ re-verified on import): `python3 -m acsolver import results/best_solutions.jsonl
 | `acsolver/db.py` | SQLite schema: runs, best_solutions, improvements, insights, batches, batch_jobs, problem_status |
 | `acsolver/loop.py` | batch runner: engine → shortening → official verification → DB (crash-safe, resumable) |
 | `acsolver/controller.py` | plans batches from measured yield per action, logs reasoning |
+| `acsolver/transport.py` | Aut(F2)-orbit keys (Whitehead) and transport of verified paths along orbits |
 | `acsolver/mining.py` | n-grams/macro-moves, solve rate by feature/family, length profiles, strategy stats |
 | `acsolver/model.py` | numpy MLP value model trained on states of verified paths |
 | `acsolver/dashboard.py` | static HTML dashboard |
@@ -74,6 +75,22 @@ re-verified on import): `python3 -m acsolver import results/best_solutions.jsonl
    repeat until no gain.
 5. **Verification**: the official verifier judges every candidate; only
    `ok: true` paths are stored.
+
+## Aut(F2)-orbit transport
+
+`acsolver/transport.py` (`python3 -m acsolver transport`, and the controller
+action `transport` after every batch). AC moves commute with automorphisms
+of F2: if Q = phi(P) up to rotation, inversion and relator order, a verified
+path of P becomes a path of Q (prefix of conjugations, P's body with each
+conjugation by g replaced by conjugations by the letters of phi(g), then a
+short basis -> (x, y) finish). Orbits are identified by Whitehead-minimal
+canonical forms (`orbit_key`, cached in `data/orbit_keys.json`). Donors are
+all verified paths in the DB plus the 424 training certificates; for each
+target, every donor and several orbit maps (stabiliser of the canonical form,
+inner part stripped) are tried, shortened by the engine, verified officially
+and recorded with strategy `transport`. New records snowball to their orbit
+siblings. `python3 -m acsolver transport --stats` prints orbit statistics
+(also in the mining report, including the MS-1190 open classes).
 
 ## Controller: automatic policy + AI analyst
 
