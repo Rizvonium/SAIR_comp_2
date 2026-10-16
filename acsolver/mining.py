@@ -181,6 +181,17 @@ def strategy_stats(con):
     return out
 
 
+def orbit_insights(con) -> dict | None:
+    """Aut(F2)-orbit statistics (acsolver.transport.orbit_stats): number and
+    sizes of orbits, unsolved problems sharing an orbit with a solved one,
+    and the orbits of the MS-1190 open classes."""
+    from . import transport
+    try:
+        return transport.orbit_stats(con)
+    except Exception as e:  # statistics must never break mining
+        return {"error": repr(e)}
+
+
 def mine(con, verbose=False, batch_id=None) -> dict:
     paths = _best_paths(con)
     grams = ngrams(paths)
@@ -200,6 +211,7 @@ def mine(con, verbose=False, batch_id=None) -> dict:
         "features": by_feature(con, paths),
         "strategies": strategy_stats(con),
         "hardness": hardness_model(con),
+        "orbits": orbit_insights(con),
     }
     db.add_insight(con, "miner", "stats", "insight mining", res, batch_id)
     notes = [dict(r) for r in con.execute(
@@ -249,6 +261,23 @@ def write_report(res: dict):
         L.append("| feature | coefficient |\n|---|---:|")
         for k, v in hm["coefficients"]:
             L.append(f"| {k} | {v} |")
+    ob = res.get("orbits") or {}
+    if ob and "error" not in ob:
+        L.append("\n## Aut(F2)-orbits (Whitehead-minimal canonical forms)")
+        L.append(f"- pool: {ob['pool_problems']} problems in **{ob['orbits_pool']}** orbits "
+                 f"({ob['orbits_all']} with the training set); largest orbits {ob['largest_orbits']}")
+        L.append(f"- orbit size histogram (pool members): {ob['orbit_size_hist_pool']}")
+        L.append(f"- orbits with a training instance: {ob['orbits_with_training']}; "
+                 f"orbits with a solved member: {ob['orbits_with_solved']}")
+        L.append(f"- unsolved: {ob['unsolved']}, of which **{ob['unsolved_sharing_orbit_with_solved']}** share an "
+                 "orbit with a solved problem (transport targets)")
+        cl = ob.get("ms1190_open_classes") or {}
+        if cl:
+            L.append("\n| MS-1190 open class | pool members | orbits | orbit sizes (pool) | solved | in solved orbit |")
+            L.append("|---|---:|---:|---|---:|---:|")
+            for k, v in cl.items():
+                L.append(f"| {k} | {v['members']} | {v['orbits']} | {v['orbit_sizes_pool']} | "
+                         f"{v['solved_members']} | {v['members_in_solved_orbit']} |")
     L.append("\n## Macro-move candidates (frequent n-grams)")
     L.append("| moves | occurrences |\n|---|---:|")
     for m in res["macros"]:

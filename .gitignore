@@ -1,10 +1,11 @@
-bin/
-__pycache__/
+*.tmp
+.claude/worktrees/
 .pytest_cache/
+__pycache__/
+bin/
 data/*.bin
 data/*.sqlite
 data/*.sqlite-*
-*.tmp
 data/*_corridors.jsonl
+data/orbit_keys.json
 data/run_forever.log
-.claude/worktrees/

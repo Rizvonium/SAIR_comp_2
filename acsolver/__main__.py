@@ -10,6 +10,7 @@
   dashboard                      regenerate results/dashboard.html
   export                         write snapshots + verified submission parts
   import FILE                    load a best_solutions.jsonl (re-verified)
+  transport [--changed] [--budget S] [--stats]  Aut(F2)-orbit transport of verified paths
   note "title" "text"            log an AI/analyst note into insights
 """
 from __future__ import annotations
@@ -107,11 +108,21 @@ def main(argv=None):
     ex.add_argument("--no-check", action="store_true")
     im = sub.add_parser("import")
     im.add_argument("file")
+    tr = sub.add_parser("transport")
+    tr.add_argument("--changed", action="store_true",
+                    help="only orbits whose records changed since the last transport run")
+    tr.add_argument("--no-improve", action="store_true", help="only unsolved targets")
+    tr.add_argument("--budget", type=float, help="time budget in seconds")
+    tr.add_argument("--threads", type=int, default=2)
+    tr.add_argument("--limit", type=int)
+    tr.add_argument("--stats", action="store_true", help="print orbit statistics only")
+    tr.add_argument("--retry", action="store_true", help="also redo targets already tried with the same donors")
+    tr.add_argument("--db", help="database path (default data/acsolver.sqlite)")
     nt = sub.add_parser("note")
     nt.add_argument("title")
     nt.add_argument("text")
     args = ap.parse_args(argv)
-    con = db.connect()
+    con = db.connect(args.db) if getattr(args, "db", None) else db.connect()
 
     if args.cmd == "status":
         cmd_status(con, args)
@@ -148,6 +159,17 @@ def main(argv=None):
         print(json.dumps({"snapshot_rows": n, "ac": rep, "stable": srep}, indent=1))
     elif args.cmd == "import":
         print(export.import_jsonl(con, args.file))
+    elif args.cmd == "transport":
+        from . import transport
+        if args.stats:
+            print(json.dumps(transport.orbit_stats(con), indent=1))
+        else:
+            st = transport.transport_all(con, only_changed=args.changed, improve=not args.no_improve,
+                                         threads=args.threads, limit=args.limit, time_budget=args.budget,
+                                         retry=args.retry)
+            print(json.dumps(st))
+            if (st["new"] or st["improved"]) and not args.db:
+                export.write_snapshot(con)
     elif args.cmd == "note":
         db.add_insight(con, "analyst", "note", args.title, args.text)
     return 0
