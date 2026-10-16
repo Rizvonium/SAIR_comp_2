@@ -94,6 +94,25 @@ def _record_len(item: dict):
     return None
 
 
+KNOWN = official.ROOT / "config" / "known_records.json"
+
+
+def load_records() -> tuple[dict[str, int], str]:
+    """{challenge_id: current shortest record length} and its source:
+    the cached live API snapshot when present, else manual known records."""
+    recs, src = {}, "none"
+    if KNOWN.exists():
+        recs.update({k: int(v) for k, v in json.loads(KNOWN.read_text()).get("records", {}).items()})
+        src = f"manual ({KNOWN.name})"
+    if SNAPSHOT.exists():
+        snap = json.loads(SNAPSHOT.read_text()).get("ac")
+        if snap:
+            live = {cid: _record_len(it) for cid, it in snap["items"].items()}
+            recs.update({k: v for k, v in live.items() if v is not None})
+            src = f"SAIR API snapshot {snap['fetched_at']}"
+    return recs, src
+
+
 def compare(con, items: dict[str, dict]) -> dict:
     best = db.best_lengths(con)
     rows = {"beat": [], "tie": [], "behind": [], "no_record": [], "unsolved_by_us": []}
@@ -131,6 +150,14 @@ def submit(con, yes=False, note="", include_ties=True, max_batches=1) -> list[di
         print("warning: could not read records, submitting all verified bests:", e)
         items = None
     cands = candidates(con, items, include_ties)
+    # point order: record-beaters, then problems with no record (sole solver), then ties
+    recs = {cid: _record_len(it) for cid, it in (items or {}).items()}
+    mine = db.best_lengths(con)
+
+    def prio(c):
+        rec = recs.get(c[0])
+        return 1 if rec is None else (0 if mine[c[0]] < rec else 2)
+    cands.sort(key=prio)
     # re-verify locally with the official code before spending quota
     verdicts = official.verify_many(cands)
     cands = [c for c, v in zip(cands, verdicts) if v["ok"]]

@@ -41,6 +41,9 @@ code{font-size:12px;color:var(--ink2)}svg text{fill:var(--ink2);font-size:11px}
 #tip{position:fixed;pointer-events:none;background:var(--panel);color:var(--ink);border:1px solid var(--border);
 border-radius:6px;padding:4px 8px;font-size:12px;display:none;box-shadow:0 2px 8px rgba(0,0,0,.15)}
 .note{white-space:pre-wrap;color:var(--ink2);font-size:13px}
+.pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:12px;font-weight:600;border:1px solid var(--border)}
+.pill.beating{color:var(--good);border-color:var(--good)}.pill.tied{color:var(--series);border-color:var(--series)}
+.pill.behind{color:var(--accent);border-color:var(--accent)}.pill.unsolved{color:var(--muted)}
 a{color:var(--series);overflow-wrap:anywhere}
 .grid2>*,.tiles>*{min-width:0}
 html,body{overflow-x:hidden}
@@ -155,6 +158,31 @@ def render(con) -> str:
              ("mean path length", f"{total / n_solved:.2f}" if n_solved else "-"),
              ("proven optimal", f"{n_opt:,}"), ("engine runs", f"{runs[0]:,}"),
              ("engine hours", f"{(runs[1] or 0) / 3600:.1f}")]
+    from . import sair
+    recs, rec_src = sair.load_records()
+    cmp_rows, n_beat, n_tie, n_behind = [], 0, 0, 0
+    for pid, rec in recs.items():
+        ours = best[pid]["length"] if pid in best else None
+        if ours is None:
+            state, gap = "unsolved", None
+        elif ours < rec:
+            state, gap = "beating", ours - rec
+            n_beat += 1
+        elif ours == rec:
+            state, gap = "tied", 0
+            n_tie += 1
+        else:
+            state, gap = "behind", ours - rec
+            n_behind += 1
+        cmp_rows.append((pid, ours, rec, gap, state))
+    order = {"beating": 0, "tied": 1, "behind": 2, "unsolved": 3}
+    cmp_rows.sort(key=lambda r: (order[r[4]], r[3] if r[3] is not None else 999))
+    cmp_html = _table(["problem", "my best", "record", "gap", "status"],
+                      [(_esc(p), o if o is not None else "–", r, (f"{g:+d}" if g is not None else "–"),
+                        f'<span class="pill {s}">{s}</span>') for p, o, r, g, s in cmp_rows], (1, 2, 3))
+    if recs:
+        tiles = [("beating the record", f"{n_beat}"), ("tied with the record", f"{n_tie}"),
+                 ("behind the record", f"{n_behind}")] + tiles
     tiles_html = "".join(f'<div class="tile"><div class="v">{v}</div><div class="k">{k}</div></div>' for k, v in tiles)
 
     hist = {}
@@ -217,6 +245,10 @@ def render(con) -> str:
 <h1>Andrews–Curtis solver — Discovery Track (AC)</h1>
 <p class="sub">Generated {_esc(db.now())}. Every path below was accepted by the official SAIR verifier.</p>
 <div class="tiles">{tiles_html}</div>
+<h2>Me vs the leaderboard</h2>
+<div class="card"><p class="sub" style="margin:0 0 8px">My current best against the shortest record for every problem with a known
+record (source: {_esc(rec_src)}). Points go only to the shortest path, so <b>beating</b> and <b>tied</b> rows score.</p>
+{cmp_html if recs else "<p class='sub'>No records loaded yet: add them to config/known_records.json or run <code>python3 -m acsolver sair snapshot</code>.</p>"}</div>
 <h2>Export</h2>
 <div class="card"><a href="submission.txt" download>Download submission.txt</a> (all verified best paths) ·
 <a href="submission_parts/">upload-ready parts</a> · <a href="best_solutions.jsonl" download>best_solutions.jsonl</a> ·

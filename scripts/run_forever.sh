@@ -21,5 +21,11 @@ while [ ! -f data/STOP ]; do
       [ -n "${SYNC_MAIN:-1}" ] && git push -q origin "HEAD:main" || true
     fi
   fi
+  # automatic SAIR upload (only when an API key is configured): every
+  # SUBMIT_EVERY iterations, upload all verified paths that can score
+  # (record-beaters first); ~24 uploads/day at the default, under the 40/day quota
+  if [ -n "${SAIR_API_KEY:-}" ] && [ $((i % ${SUBMIT_EVERY:-4})) -eq 0 ]; then
+    python3 -m acsolver sair submit --yes --note "${SAIR_NOTE:-AC solver (canonical flood + Aut-orbit transport)}" || true
+  fi
 done
 echo "stopped (data/STOP present)"

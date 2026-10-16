@@ -1,0 +1,5 @@
+{
+  "_note": "Current shortest record lengths seen on the SAIR leaderboard (manual entries; the live API snapshot in data/sair_snapshot.json overrides these when available).",
+  "updated": "2026-10-16",
+  "records": {"ac-08051": 39, "ac-02214": 38, "ac-03562": 42, "ac-00217": 38}
+}
