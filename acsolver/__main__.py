@@ -78,6 +78,10 @@ def cmd_status(con, args):
 
 
 def main(argv=None):
+    argv = sys.argv[1:] if argv is None else argv
+    if argv[:1] == ["sair"]:  # SAIR API client has its own argument parser
+        from . import sair
+        return sair.main(argv[1:])
     ap = argparse.ArgumentParser(prog="acsolver")
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("status")

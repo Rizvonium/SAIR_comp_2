@@ -9,3 +9,4 @@ data/*.sqlite-*
 data/*_corridors.jsonl
 data/orbit_keys.json
 data/run_forever.log
+data/sair_snapshot.json
