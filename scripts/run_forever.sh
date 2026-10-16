@@ -17,6 +17,8 @@ while [ ! -f data/STOP ]; do
         -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>" \
         -m "Claude-Session: https://claude.ai/code/session_01P3DxKPrtYyb6xBtERJhcyh"
       for t in 2 4 8 16; do git push -q -u origin "$BRANCH" && break; sleep $t; done
+      # keep main in sync with the working branch (fast-forward only)
+      [ -n "${SYNC_MAIN:-1}" ] && git push -q origin "HEAD:main" || true
     fi
   fi
 done
