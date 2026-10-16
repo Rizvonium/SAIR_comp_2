@@ -7,3 +7,4 @@ data/*.sqlite-*
 *.tmp
 data/*_corridors.jsonl
 data/run_forever.log
+.claude/worktrees/
