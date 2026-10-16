@@ -23,6 +23,7 @@
   "astar_t6",
   "polish",
   "astar_t3",
+  "astar_deep",
   "guided_beam",
   "tail",
   "gbfs_lam"

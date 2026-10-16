@@ -64,6 +64,8 @@ PRESETS: dict[str, dict] = {
                  "max_nodes": 20_000_000, "time_limit": 120},
     "astar_t3": {"strategy": "gbfs", "w_len": 0, "lam": 1, "w_tdist": 3, "self_corridor": 1, "tail_t": 22,
                  "max_nodes": 20_000_000, "time_limit": 120},
+    "astar_deep": {"strategy": "gbfs", "w_len": 0, "lam": 1, "w_tdist": 2.5, "maxlen": 26, "self_corridor": 1,
+                   "tail_t": 22, "max_nodes": 100_000_000, "time_limit": 800},
     # re-shorten the stored best path with larger balls
     "polish": {"strategy": "polish", "d1": 5, "d2": 5, "ball_budget": 60_000_000, "shorten_time": 120},
 }
