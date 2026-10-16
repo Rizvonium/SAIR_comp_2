@@ -67,13 +67,31 @@ def write_submission(con, outdir: Path = RESULTS, check: bool = True) -> dict:
 
 
 def import_jsonl(con, path: Path) -> dict:
-    """Load a best_solutions.jsonl snapshot; every path is re-verified."""
+    """Load a best_solutions.jsonl snapshot, or a submission TXT file
+    (``ac-00001: [0, 2, 6]`` lines, ``#`` comments); a directory imports every
+    .jsonl/.txt in it.  Every path is re-verified; Stable AC (sac-) lines are
+    skipped because they are derived from the AC paths."""
+    path = Path(path)
+    if path.is_dir():
+        tot = {}
+        for f in sorted(path.glob("*.jsonl")) + sorted(path.glob("*.txt")):
+            for k, v in import_jsonl(con, f).items():
+                tot[k] = tot.get(k, 0) + v
+        return tot
     items = []
     with open(path) as f:
         for line in f:
-            if line.strip():
-                r = json.loads(line)
-                items.append(r)
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if line.startswith("{"):
+                items.append(json.loads(line))
+            else:
+                cid, _, moves = line.partition(":")
+                cid = cid.strip()
+                if cid.startswith("sac-"):
+                    continue
+                items.append({"problem_id": cid, "path": json.loads(moves), "strategy": "import"})
     stats = {"new": 0, "improved": 0, "tied": 0, "worse": 0, "rejected": 0}
     for r in items:
         pid = r["problem_id"]
