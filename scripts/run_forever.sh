@@ -16,6 +16,13 @@ while [ ! -f data/STOP ]; do
       git commit -qm "results: snapshot after controller iteration $i ($(python3 -m acsolver status | head -1))" \
         -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>" \
         -m "Claude-Session: https://claude.ai/code/session_015yubTW3NecVTDVzUtmAvgb"
+      # another session may have pushed results: merge, re-import its verified
+      # paths into the DB (union of bests) and re-export before pushing
+      if git fetch -q origin "$BRANCH" && ! git merge-base --is-ancestor "origin/$BRANCH" HEAD; then
+        git merge -q -X theirs --no-edit "origin/$BRANCH" || git merge --abort
+        python3 -m acsolver import results/best_solutions.jsonl && python3 -m acsolver export >/dev/null
+        git add results/ && git commit -qm "results: merge remote snapshot" || true
+      fi
       for t in 2 4 8 16; do git push -q -u origin "$BRANCH" && break; sleep $t; done
       # keep main in sync with the working branch (fast-forward only)
       [ -n "${SYNC_MAIN:-1}" ] && git push -q origin "HEAD:main" || true
