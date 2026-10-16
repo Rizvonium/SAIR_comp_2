@@ -1,5 +1,5 @@
 {
- "_note": "Analyst steering. Points go only to the shortest path; live SAIR records show our paths ~2.5x the record. Main cause: cflood stopped at the first corridor class and inherited long donor paths. cflood now also floods to the trivial table (cdual) and keeps the shorter realization; cflood_t (full budget, T_22 table) re-solves record problems first (ac-05773 107->64, ac-08279 212->103, ac-04623 132->93). Greedy descent cannot cross length barriers.",
+ "_note": "Analyst steering. Points go only to the shortest path; live SAIR records show our paths ~2.5x the record. Main cause: cflood stopped at the first corridor class and inherited long donor paths. cflood now also floods to the trivial table (cdual) and keeps the shorter realization; cflood_t (full budget, T_22 table) re-solves record problems first (ac-05773 107->64, ac-08279 212->103, ac-04623 132->93). Greedy descent cannot cross length barriers. Weighted A* (astar_t*, key = moves + w * trivial-table class distance, from the first path state with total <= 22) cut 140->51, 103->50, 76->48, tied ac-01773 at 25; weights 3/4/6 complement each other.",
  "batch_jobs": 400,
  "action_weights": {
   "cover": 3.0,
@@ -18,10 +18,12 @@
  "transport_budget": 300,
  "resolve_presets": [
   "cflood_t",
+  "astar_t",
   "guided",
-  "guided_beam",
+  "astar_t6",
   "polish",
-  "guided",
+  "astar_t3",
+  "guided_beam",
   "tail",
   "gbfs_lam"
  ]

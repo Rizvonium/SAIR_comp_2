@@ -62,6 +62,8 @@ static void set_param(Params& P, ShortenParams& SP, const std::string& k, const 
   else if (k == "bidir_fwd") P.bidir_fwd = std::stoi(v);
   else if (k == "w_len") P.w_len = std::stod(v);
   else if (k == "w_model") P.w_model = std::stod(v);
+  else if (k == "w_tdist") P.w_tdist = std::stod(v);
+  else if (k == "t_unknown") P.t_unknown = std::stod(v);
   else if (k == "w_cyc") P.w_cyc = std::stod(v);
   else if (k == "w_max") P.w_max = std::stod(v);
   else if (k == "w_min") P.w_min = std::stod(v);

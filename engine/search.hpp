@@ -34,6 +34,11 @@ struct Params {
   double T0 = 1.5, T1 = 0.05;
   int bidir_fwd = 6;
   double w_len = 1.0, w_model = 0.0;  // score = w_len*total + w_cyc*cyclic + w_model*model
+  // + w_tdist * (class distance to (x, y) in the trivial table): a lower bound
+  // on the remaining moves (conjugation/inversion keep the class), so with
+  // w_len = 0 and lam = 1 GBFS is weighted A*; classes outside the table
+  // score t_unknown + (total - table cap)
+  double w_tdist = 0.0, t_unknown = 40.0;
   double w_cyc = 0.0;                 // weight of the cyclically reduced total length
   double w_max = 0.0, w_min = 0.0;    // weights of the longer / shorter relator length
   int tie = 0;                        // GBFS tie-break: 0 random, 1 newest, 2 oldest
@@ -116,6 +121,14 @@ inline double score_state(const Letter* a0, int n0, const Letter* a1, int n1, co
   if (P.w_cyc != 0) s += P.w_cyc * ((n0 - cyc_slack(a0, n0)) + (n1 - cyc_slack(a1, n1)));
   if (P.w_max != 0) s += P.w_max * std::max(n0, n1);
   if (P.w_min != 0) s += P.w_min * std::min(n0, n1);
+  if (P.w_tdist != 0 && C.triv) {
+    State st;
+    st.r[0].assign(a0, a0 + n0);
+    st.r[1].assign(a1, a1 + n1);
+    canon::CKey k;
+    int d = canon::class_of(st, k) ? C.triv->dist(k) : -1;
+    s += P.w_tdist * (d >= 0 ? d : P.t_unknown + std::max(0, n0 + n1 - C.triv->L));
+  }
   if (P.w_model != 0 && C.mlp && C.mlp->loaded()) {
     float f[NFEAT];
     compute_features(a0, n0, a1, n1, C.eg, f);

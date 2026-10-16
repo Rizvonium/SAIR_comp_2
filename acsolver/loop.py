@@ -55,6 +55,15 @@ PRESETS: dict[str, dict] = {
     # long donor paths), big budget; the corridor flood is the fallback
     "cflood_t": {"strategy": "cflood", "cdual": 1.0, "max_nodes": 3_000_000, "time_limit": 240,
                  "ccompact": 5_000_000, "ctime": 30},
+    # weighted A* to (x, y): key = moves + w_tdist * class distance in the
+    # trivial table (a lower bound on the remaining moves); from the first
+    # state of the best path inside the table, accept only shorter paths
+    "astar_t": {"strategy": "gbfs", "w_len": 0, "lam": 1, "w_tdist": 4, "self_corridor": 1, "tail_t": 22,
+                "max_nodes": 20_000_000, "time_limit": 120},
+    "astar_t6": {"strategy": "gbfs", "w_len": 0, "lam": 1, "w_tdist": 6, "self_corridor": 1, "tail_t": 22,
+                 "max_nodes": 20_000_000, "time_limit": 120},
+    "astar_t3": {"strategy": "gbfs", "w_len": 0, "lam": 1, "w_tdist": 3, "self_corridor": 1, "tail_t": 22,
+                 "max_nodes": 20_000_000, "time_limit": 120},
     # re-shorten the stored best path with larger balls
     "polish": {"strategy": "polish", "d1": 5, "d2": 5, "ball_budget": 60_000_000, "shorten_time": 120},
 }
@@ -100,7 +109,7 @@ def run_batch(con, batch_id: int, threads: int | None = None, endgame="default",
         params = json.loads(j["params"])
         by_idx[j["job_idx"]] = (j, params)
         # keys starting with "_" and "tail_frac" are bookkeeping, not engine params
-        eparams = {k: v for k, v in params.items() if not k.startswith("_") and k != "tail_frac"}
+        eparams = {k: v for k, v in params.items() if not k.startswith("_") and k not in ("tail_frac", "tail_t")}
         p = _problem(j["problem_id"])
         rec = {"id": j["problem_id"], "job": j["job_idx"], "r0": p["r0"], "r1": p["r1"], "seed": j["seed"]}
         if params.get("strategy") == "polish":
@@ -119,14 +128,22 @@ def run_batch(con, batch_id: int, threads: int | None = None, endgame="default",
                 b = db.best(con, j["problem_id"])
                 if b is not None:
                     rec["params"]["bound"] = b["length"]
-                    if params.get("tail_frac") is not None:
+                    if params.get("tail_frac") is not None or params.get("tail_t"):
                         # tail re-search: start from an intermediate state of the
-                        # best path; the prefix is spliced back before verification
+                        # best path; the prefix is spliced back before verification.
+                        # tail_t = L: the first state with total length <= L (where
+                        # the trivial table, and so the A* heuristic, takes over)
                         bp = json.loads(b["path"])
-                        i = int(len(bp) * float(params["tail_frac"]))
                         s = (tuple(p["r0"]), tuple(p["r1"]))
-                        for m in bp[:i]:
-                            s = vcore.apply_move(s, m)
+                        if params.get("tail_t"):
+                            i = 0
+                            while i < len(bp) and len(s[0]) + len(s[1]) > int(params["tail_t"]):
+                                s = vcore.apply_move(s, bp[i])
+                                i += 1
+                        else:
+                            i = int(len(bp) * float(params["tail_frac"]))
+                            for m in bp[:i]:
+                                s = vcore.apply_move(s, m)
                         rec["r0"], rec["r1"] = list(s[0]), list(s[1])
                         rec["params"]["bound"] = len(bp) - i
                         prefixes[j["job_idx"]] = bp[:i]
@@ -136,7 +153,8 @@ def run_batch(con, batch_id: int, threads: int | None = None, endgame="default",
     cor = write_corridors(con)
     if cor:
         gopts["corridors"] = str(cor)
-    if any(r.get("params", {}).get("strategy") == "cflood" for r in solve_recs):
+    if any(r.get("params", {}).get("strategy") == "cflood" or r.get("params", {}).get("w_tdist")
+           for r in solve_recs):
         triv = engine.default_trivial()
         if triv:
             gopts["trivial"] = str(triv)
