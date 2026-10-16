@@ -1,9 +1,26 @@
 {
-  "_note": "Analyst steering. Greedy descent cannot cross the length barriers of hard instances (measured: short failures need peaks > start+10). Phase 2: canonical minimax flood (cflood) for coverage, deep flood for escalation, Aut-orbit transport after every batch, then heavy polishing since only the shortest path scores.",
+  "_note": "Analyst steering. Greedy descent cannot cross length barriers: cflood covers, cflood_deep escalates, Aut-orbit transport after every batch. Records are decided by path length and our paths are long (mean ~270): guided re-search cut 65->34 and 60->41 on record problems, so shortening now gets the largest share.",
   "batch_jobs": 400,
-  "action_weights": {"cover": 6.0, "escalate": 0.8, "bidir": 0.4, "polish": 1.2, "resolve": 0.6},
+  "action_weights": {
+    "cover": 3.0,
+    "escalate": 0.6,
+    "bidir": 0.4,
+    "polish": 1.5,
+    "resolve": 3.0
+  },
   "cover_preset": "cflood",
-  "ladder": ["cflood", "cflood_deep", "beam_wide"],
+  "ladder": [
+    "cflood",
+    "cflood_deep",
+    "beam_wide"
+  ],
   "transport": true,
-  "transport_budget": 300
+  "transport_budget": 300,
+  "resolve_presets": [
+    "guided",
+    "guided_beam",
+    "guided",
+    "tail",
+    "gbfs_lam"
+  ]
 }
