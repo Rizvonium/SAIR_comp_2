@@ -1,10 +1,10 @@
 {
- "_note": "Analyst steering. Points go only to the shortest path; live SAIR records show our paths ~2.5x the record. Main cause: cflood stopped at the first corridor class and inherited long donor paths. cflood now also floods to the trivial table (cdual) and keeps the shorter realization; cflood_t (full budget, T_22 table) re-solves record problems first (ac-05773 107->64, ac-08279 212->103, ac-04623 132->93). Greedy descent cannot cross length barriers. Weighted A* (astar_t*, key = moves + w * trivial-table class distance, from the first path state with total <= 22) cut 140->51, 103->50, 76->48, tied ac-01773 at 25; weights 3/4/6 complement each other.",
+ "_note": "Analyst steering. Points go only to the shortest path; live SAIR records show our paths ~2.5x the record. Main cause: cflood stopped at the first corridor class and inherited long donor paths. cflood now also floods to the trivial table (cdual) and keeps the shorter realization; cflood_t (full budget, T_22 table) re-solves record problems first (ac-05773 107->64, ac-08279 212->103, ac-04623 132->93). Greedy descent cannot cross length barriers. Weighted A* (astar_t*, key = moves + w * trivial-table class distance, from the first path state with total <= 22) cut 140->51, 103->50, 76->48, tied ac-01773 at 25; weights 3/4/6 complement each other. Points: records held by many teams are ~optimal (tie = 2^-k, worthless); 1,661 problems are held by ONE team (record median 114) -> beat = 1 point, tie = 0.5. Controller now orders cover/escalate/shorten by fewest record holders.",
  "batch_jobs": 400,
  "action_weights": {
   "cover": 3.0,
   "escalate": 0.6,
-  "bidir": 0.4,
+  "bidir": 0.1,
   "polish": 1.5,
   "resolve": 3.0
  },

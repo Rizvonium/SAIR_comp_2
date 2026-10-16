@@ -115,23 +115,37 @@ def plan(con, cfg) -> tuple[list[dict], dict, str]:
         r = recs.get(p)
         return (best[p] - r) / r if r else 0.0
 
+    kt = sair.load_kteams("ac")
+
     cover_all = sorted((p for p in P if p not in tried), key=lambda p: (tot(p), p))
-    if have_recs:   # interleave: nobody solved (by start length) / others solved (by record length)
+    if have_recs:
+        # expected points: a sole solve or a beaten record is worth 1, a tie
+        # with k teams 2^-k.  Interleave: nobody solved (by start length) /
+        # held by one or two teams (by record length) / the rest (by record)
         a = [p for p in cover_all if p not in recs]
-        b = sorted((p for p in cover_all if p in recs), key=lambda p: (recs[p], tot(p), p))
-        cover_all = [x for pair in zip(a, b) for x in pair] + a[len(b):] + b[len(a):]
+        b = sorted((p for p in cover_all if p in recs and kt.get(p, 0) <= 2), key=lambda p: (recs[p], tot(p), p))
+        c = sorted((p for p in cover_all if p in recs and kt.get(p, 0) > 2), key=lambda p: (recs[p], tot(p), p))
+        out, i = [], 0
+        while i < max(len(a), len(b), len(c)):
+            for x in (a, b, c):
+                if i < len(x):
+                    out.append(x[i])
+            i += 1
+        cover_all = out
 
     def shorten_key(p, n_prev):
         if not have_recs:
             return (n_prev, -best[p])
         g = gap(p)
-        # behind with a small gap first, then ties (beating a tie = full point), held records last
-        return (n_prev, 0 if g > 0 else (1 if g == 0 else 2), g if g > 0 else 0, -best[p])
+        k = kt.get(p, 0) if g >= 0 else 99   # held records last
+        # few record holders first (a beat is worth 1, a tie 2^-k), then the smallest gap
+        return (n_prev, min(k, 4), g, -best[p])
 
     pools = {
         "cover": cover_all,
         "escalate": sorted((p for p in P if p in tried and p not in best),
-                           key=lambda p: (status[p]["attempts"], 0 if p in recs else 1, recs.get(p, 0), tot(p))),
+                           key=lambda p: (status[p]["attempts"], min(kt.get(p, 0), 3) if p in recs else 0,
+                                          recs.get(p, 0), tot(p))),
         "bidir": sorted((p for p in best if p.startswith("ac-") and best[p] <= cfg["bidir_max_len"]
                          and not status.get(p, {}).get("optimal")
                          and not any(a == "bidir" for a, _ in last_action.get(p, []))),
