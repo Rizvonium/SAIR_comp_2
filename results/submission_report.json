@@ -1,12 +1,20 @@
 {
- "solutions": 465,
+ "solutions": 504,
  "parts": [
   {
    "file": "part_01.txt",
-   "lines": 465,
+   "lines": 500,
    "exit": 0,
    "accepted": true,
-   "ok": 465,
+   "ok": 500,
+   "failed": []
+  },
+  {
+   "file": "part_02.txt",
+   "lines": 4,
+   "exit": 0,
+   "accepted": true,
+   "ok": 4,
    "failed": []
   }
  ]
