@@ -1,7 +1,9 @@
 {
-  "_note": "Analyst steering for the controller (merged over controller.DEFAULTS). Phase 1: quick coverage sweep shortest-first so the corridor table snowballs; unsolved problems then climb the ladder.",
-  "batch_jobs": 500,
-  "action_weights": {"cover": 6.0, "escalate": 0.5, "bidir": 0.3, "polish": 0.3, "resolve": 0.2},
-  "cover_preset": "gbfs_quick",
-  "ladder": ["gbfs_quick", "gbfs", "gbfs_eps", "gbfs_deep", "beam", "beam_wide"]
+  "_note": "Analyst steering. Greedy descent cannot cross the length barriers of hard instances (measured: short failures need peaks > start+10). Phase 2: canonical minimax flood (cflood) for coverage, deep flood for escalation, Aut-orbit transport after every batch, then heavy polishing since only the shortest path scores.",
+  "batch_jobs": 400,
+  "action_weights": {"cover": 6.0, "escalate": 0.8, "bidir": 0.4, "polish": 1.2, "resolve": 0.6},
+  "cover_preset": "cflood",
+  "ladder": ["cflood", "cflood_deep", "beam_wide"],
+  "transport": true,
+  "transport_budget": 300
 }
