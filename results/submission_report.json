@@ -1,5 +1,5 @@
 {
- "solutions": 918,
+ "solutions": 934,
  "parts": [
   {
    "file": "part_01.txt",
@@ -11,10 +11,10 @@
   },
   {
    "file": "part_02.txt",
-   "lines": 418,
+   "lines": 434,
    "exit": 0,
    "accepted": true,
-   "ok": 418,
+   "ok": 434,
    "failed": []
   }
  ]

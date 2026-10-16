@@ -1,6 +1,6 @@
 {
- "solutions": 918,
- "total_moves": 162776,
+ "solutions": 934,
+ "total_moves": 161344,
  "parts": [
   {
    "file": "part_01.txt",
@@ -10,7 +10,7 @@
   },
   {
    "file": "part_02.txt",
-   "lines": 418,
+   "lines": 434,
    "exit": 0,
    "failed": []
   }
