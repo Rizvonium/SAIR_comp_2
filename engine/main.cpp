@@ -6,6 +6,15 @@
 //   acengine shorten [--key value ...]    {id,r0,r1,path} -> {id,path,before,after}
 //   acengine features                     {r0,r1,path} -> {X:[[..]],y:[..]} along the path
 //   acengine random-test --n N --len L    random sequences for cross-checking
+//   acengine build-trivial --cap L --out FILE [--threads T]
+//                                         canonical trivial component T_L (flood.hpp)
+//   acengine canon                        {r0,r1} -> canonical class key
+//   acengine canon-xcheck --cap L         {r0,r1} -> exact BFS (cap L) projected to classes
+//                                         vs the canonical component at cap L
+//
+// Strategy cflood (solve --strategy cflood --max_nodes BUDGET [--maxlen CAPMAX]
+// --trivial FILE): canonical minimax flood; output adds water, barrier_lb,
+// fingerprint, csteps.
 //
 // Common flags: --endgame FILE --model FILE --macros FILE --threads T
 // Search flags map 1:1 onto ac::Params fields (see search.hpp), and can be
@@ -61,6 +70,12 @@ static void set_param(Params& P, ShortenParams& SP, const std::string& k, const 
   else if (k == "eps") P.eps = std::stod(v);
   else if (k == "self_corridor") P.self_corridor = v != "0";
   else if (k == "stop_first") P.stop_first = v != "0";
+  else if (k == "cu") P.cu = std::stoi(v);
+  else if (k == "cbeam") P.cbeam = std::stoi(v);
+  else if (k == "clam") P.clam = std::stod(v);
+  else if (k == "ccompact") P.ccompact = std::stoll(v);
+  else if (k == "cslack") P.cslack = std::stoi(v);
+  else if (k == "ctime") P.ctime = std::stod(v);
   else if (k == "d1") SP.d1 = std::stoi(v);
   else if (k == "d2") SP.d2 = std::stoi(v);
   else if (k == "ball_budget") SP.ball_budget = std::stoll(v);
@@ -68,7 +83,8 @@ static void set_param(Params& P, ShortenParams& SP, const std::string& k, const 
   else if (k == "shorten_time") SP.time_limit = std::stod(v);
   // flags consumed elsewhere
   else if (k == "endgame" || k == "model" || k == "macros" || k == "threads" || k == "seed" || k == "shorten" ||
-           k == "radius" || k == "out" || k == "n" || k == "len" || k == "corridors" || k == "emit_raw")
+           k == "radius" || k == "out" || k == "n" || k == "len" || k == "corridors" || k == "emit_raw" ||
+           k == "trivial" || k == "cap" || k == "max")
     ;
   else throw std::runtime_error("unknown parameter " + k);
 }
@@ -111,6 +127,8 @@ struct Shared {
   Corridor cor;
   MLP mlp;
   std::vector<std::vector<int>> macros;
+  canon::TrivialTable triv;
+  canon::CanonCorridor ccor;
 };
 
 static void load_shared(Shared& S, std::map<std::string, std::string>& F) {
@@ -122,6 +140,11 @@ static void load_shared(Shared& S, std::map<std::string, std::string>& F) {
   if (F.count("corridors")) {
     size_t n = S.cor.load(F["corridors"]);
     fprintf(stderr, "corridors: %zu paths, %zu states\n", S.cor.paths.size(), n);
+    S.ccor.build(S.cor);
+  }
+  if (F.count("trivial")) {
+    if (!S.triv.load(F["trivial"])) throw std::runtime_error("cannot load trivial table " + F["trivial"]);
+    fprintf(stderr, "trivial component T_%d: %zu classes\n", S.triv.L, S.triv.size());
   }
   if (F.count("macros")) {
     std::ifstream f(F["macros"]);
@@ -175,6 +198,91 @@ int main(int argc, char** argv) {
       Endgame eg;
       eg.build(std::stoi(F["radius"]));
       eg.save(F["out"]);
+      return 0;
+    }
+    if (cmd == "build-trivial") {
+      canon::TrivialTable T;
+      int L = F.count("cap") ? std::stoi(F["cap"]) : 20;
+      auto t0 = std::chrono::steady_clock::now();
+      T.build(L, F.count("threads") ? threads : 1);
+      T.save(F["out"]);
+      fprintf(stderr, "T_%d: %zu classes, %.1fs -> %s\n", L, T.size(),
+              std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count(), F["out"].c_str());
+      return 0;
+    }
+    if (cmd == "canon") {
+      for (auto& l : read_lines(std::cin)) {
+        auto v = mj::parse(l);
+        State s = state_of(v);
+        canon::CKey k;
+        bool ok = canon::class_of(s, k);
+        std::cout << mj::ObjWriter().str("key", ok ? canon::key_str(k) : "").integer("total", ok ? k.total() : -1).done()
+                  << "\n";
+      }
+      return 0;
+    }
+    if (cmd == "canon-xcheck") {
+      // exact BFS with total length cap L, projected to classes, against the
+      // canonical BFS (generalized products) at the same cap
+      const int L = std::stoi(F.at("cap"));
+      const long long maxn = F.count("max") ? std::stoll(F["max"]) : 20000000;
+      for (auto& l : read_lines(std::cin)) {
+        auto v = mj::parse(l);
+        State s0 = state_of(v);
+        Arena A;
+        HashMap H(1 << 16);
+        A.add(s0.r[0].data(), (int)s0.r[0].size(), s0.r[1].data(), (int)s0.r[1].size(), UINT32_MAX, 255, 0);
+        H.insert(hash_state(s0), 0);
+        HashMap ex(1 << 10);
+        std::vector<Letter> buf;
+        bool complete = true;
+        for (size_t i = 0; i < A.nodes.size(); ++i) {
+          State s = A.state((uint32_t)i);
+          canon::CKey k;
+          if (canon::class_of(s, k)) ex.insert(canon::chash(k), 0);
+          const Node nd = A.nodes[i];
+          buf.resize(nd.l0 + nd.l1 + 2);
+          for (int m = 0; m < NUM_MOVES; ++m) {
+            const Letter* a0 = A.w0((uint32_t)i);
+            const Letter* a1 = A.w1((uint32_t)i);
+            int n = apply_into(m, a0, nd.l0, a1, nd.l1, buf.data());
+            const Letter *b0 = a0, *b1 = a1;
+            int n0 = nd.l0, n1 = nd.l1;
+            if (TARGET_REL[m] == 0) b0 = buf.data(), n0 = n;
+            else b1 = buf.data(), n1 = n;
+            if (n0 + n1 > L || n0 == 0 || n1 == 0) continue;
+            if (!H.insert(hash_state(b0, n0, b1, n1), 0)) continue;
+            A.add(b0, n0, b1, n1, (uint32_t)i, m, 0);
+          }
+          if ((long long)A.nodes.size() > maxn) {
+            complete = false;
+            break;
+          }
+        }
+        canon::CKey k0;
+        canon::class_of(s0, k0);
+        HashMap cs(1 << 10);
+        std::vector<canon::CKey> q = {k0};
+        cs.insert(canon::chash(k0), 0);
+        for (size_t i = 0; i < q.size(); ++i)
+          canon::neighbours_key(q[i], -1, L, -1, [&](const canon::CKey& k2, int, const canon::EdgeInfo&) {
+            if (cs.insert(canon::chash(k2), 0)) q.push_back(k2);
+          });
+        size_t miss_c = 0, miss_e = 0;
+        for (size_t i = 0; i < ex.keys.size(); ++i)
+          if (ex.keys[i] && !cs.find(ex.keys[i])) ++miss_c;
+        for (auto& k : q)
+          if (!ex.find(canon::chash(k))) ++miss_e;
+        std::cout << mj::ObjWriter()
+                         .integer("exact_states", (long long)A.nodes.size())
+                         .boolean("complete", complete)
+                         .integer("exact_classes", (long long)ex.size())
+                         .integer("canon_classes", (long long)q.size())
+                         .integer("exact_not_in_canon", (long long)miss_c)
+                         .integer("canon_not_in_exact", (long long)miss_e)
+                         .done()
+                  << "\n";
+      }
       return 0;
     }
     if (cmd == "replay") {
@@ -264,6 +372,8 @@ int main(int argc, char** argv) {
         C.cor = S.cor.loaded() ? &S.cor : nullptr;
         C.self = P.self_corridor ? 0 : owner_hash(id);
         C.mlp = &S.mlp;
+        C.triv = S.triv.loaded() ? &S.triv : nullptr;
+        C.ccor = S.ccor.loaded() ? &S.ccor : nullptr;
         C.rng.seed(mix64(s ^ str_hash(id)));
         C.t0 = std::chrono::steady_clock::now();
         SearchResult R = run_search(st, P, C);
@@ -287,6 +397,10 @@ int main(int argc, char** argv) {
         }
         if (P.strategy == "bidir") w.boolean("optimal", R.optimal).integer("lower_bound", R.lower_bound);
         if (R.solved) w.str("via", C.via_corridor ? "corridor" : "endgame");
+        if (P.strategy == "cflood") {
+          w.integer("water", R.water).integer("barrier_lb", R.barrier_lb).str("fingerprint", R.fingerprint);
+          w.integer("csteps", R.csteps);
+        }
         w.integer("nodes", R.nodes).num("secs", C.elapsed()).str("note", R.note);
         return w.done();
       });

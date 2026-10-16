@@ -16,6 +16,7 @@
 
 #include "corridor.hpp"
 #include "features.hpp"
+#include "realize.hpp"
 
 namespace ac {
 
@@ -41,6 +42,13 @@ struct Params {
   bool self_corridor = false;         // let a problem use its own stored paths (path-guided re-search)
   bool stop_first = true;
   std::vector<std::vector<int>> macros;  // macro-moves, usable as single steps
+  // cflood (canonical minimax flood): budget = max_nodes classes, capmax = maxlen
+  int cu = -1;                     // max insertion length |w| (-1: unbounded; needed for barrier_lb)
+  int cbeam = 8;                   // realization beam width
+  double clam = 1.0;               // realization: weight of leftover conjugator length
+  long long ccompact = 200000;     // BFS compaction budget (classes); 0 disables
+  int cslack = 0;                  // compaction cap = found peak + cslack
+  double ctime = 10.0;             // compaction time limit (seconds)
 };
 
 struct SearchResult {
@@ -51,6 +59,9 @@ struct SearchResult {
   long long nodes = 0;
   double secs = 0;
   std::string note;
+  // cflood
+  int water = -1, barrier_lb = -1, csteps = -1;
+  std::string fingerprint;
 };
 
 struct Ctx {
@@ -59,6 +70,8 @@ struct Ctx {
   uint64_t self = 0;              // owner hash of the problem being searched
   bool via_corridor = false;      // last successful finish came from the corridor table
   const MLP* mlp = nullptr;
+  const canon::TrivialTable* triv = nullptr;    // canonical trivial component
+  const canon::CanonCorridor* ccor = nullptr;   // classes of corridor states
   std::mt19937_64 rng;
   std::chrono::steady_clock::time_point t0;
   double elapsed() const {
@@ -569,7 +582,59 @@ inline SearchResult search_bidir(const State& start, const Params& P, Ctx& C) {
   return R;
 }
 
+// Canonical minimax flood (flood.hpp), compaction, exact realization.
+inline SearchResult search_cflood(const State& start, const Params& P, Ctx& C) {
+  using namespace canon;
+  SearchResult R;
+  static const TrivialTable NOTABLE;
+  const TrivialTable& T = C.triv ? *C.triv : NOTABLE;
+  CKey k0;
+  if (!class_of(start, k0)) {
+    R.note = "too_long";
+    return R;
+  }
+  FloodParams FP;
+  FP.budget = P.max_nodes;
+  FP.capmax = P.maxlen;
+  FP.umax = P.cu;
+  FP.time_limit = P.time_limit;
+  FloodResult F = flood(k0, FP, T, C.ccor, C.self);
+  R.nodes = F.visited;
+  R.water = F.water;
+  R.barrier_lb = F.kind == HIT_NONE ? F.barrier_lb : -1;
+  R.fingerprint = key_str(F.minkey);
+  if (F.kind == HIT_NONE) {
+    R.note = F.note + " water=" + std::to_string(F.water);
+    return R;
+  }
+  const bool fixed_end = F.kind == HIT_CORRIDOR;
+  const double tf = C.elapsed();
+  std::vector<CKey> path = compact_path(F.path, T, fixed_end, P.cslack, P.ccompact, P.ctime);
+  const double tc = C.elapsed();
+  RealizeParams RP;
+  RP.beam = P.cbeam;
+  RP.lam = P.clam;
+  const Endgame* eg = C.eg && C.eg->loaded() ? C.eg : nullptr;
+  auto mv = realize_path(start, path, eg, C.cor, F.cor, RP);
+  if (!mv && path.size() != F.path.size()) mv = realize_path(start, F.path, eg, C.cor, F.cor, RP);
+  R.csteps = (int)path.size() - 1;
+  char tbuf[96];
+  snprintf(tbuf, sizeof tbuf, " t_flood=%.2f t_compact=%.2f t_realize=%.2f", tf, tc - tf, C.elapsed() - tc);
+  std::string info = F.note + " water=" + std::to_string(F.water) + " csteps=" + std::to_string(F.path.size() - 1) +
+                     "->" + std::to_string(path.size() - 1) + " cpeak=" + std::to_string(path_peak(path)) + tbuf;
+  if (!mv) {
+    R.note = "realize_failed " + info;
+    return R;
+  }
+  R.solved = true;
+  R.path = *mv;
+  C.via_corridor = fixed_end;
+  R.note = info;
+  return R;
+}
+
 inline SearchResult run_search(const State& start, const Params& P, Ctx& C) {
+  if (P.strategy == "cflood") return search_cflood(start, P, C);
   if (P.strategy == "gbfs") return search_gbfs(start, P, C);
   if (P.strategy == "beam") return search_beam(start, P, C);
   if (P.strategy == "walk") return search_walk(start, P, C, false);
