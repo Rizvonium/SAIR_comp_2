@@ -1,10 +1,10 @@
 {
- "solutions": 10,
- "total_moves": 232,
+ "solutions": 252,
+ "total_moves": 40460,
  "parts": [
   {
    "file": "part_01.txt",
-   "lines": 10,
+   "lines": 252,
    "exit": 0,
    "failed": []
   }
