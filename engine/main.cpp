@@ -75,6 +75,7 @@ static void set_param(Params& P, ShortenParams& SP, const std::string& k, const 
   else if (k == "clam") P.clam = std::stod(v);
   else if (k == "ccompact") P.ccompact = std::stoll(v);
   else if (k == "cslack") P.cslack = std::stoi(v);
+  else if (k == "cdual") P.cdual = std::stod(v);
   else if (k == "ctime") P.ctime = std::stod(v);
   else if (k == "d1") SP.d1 = std::stoi(v);
   else if (k == "d2") SP.d2 = std::stoi(v);

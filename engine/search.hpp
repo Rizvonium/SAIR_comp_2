@@ -48,6 +48,8 @@ struct Params {
   double clam = 1.0;               // realization: weight of leftover conjugator length
   long long ccompact = 200000;     // BFS compaction budget (classes); 0 disables
   int cslack = 0;                  // compaction cap = found peak + cslack
+  double cdual = 0.5;              // >0: also flood without the corridor (this fraction of the budget)
+                                   // and keep the shorter realization (corridor donors are often long)
   double ctime = 10.0;             // compaction time limit (seconds)
 };
 
@@ -61,6 +63,7 @@ struct SearchResult {
   std::string note;
   // cflood
   int water = -1, barrier_lb = -1, csteps = -1;
+  bool via_corridor = false;
   std::string fingerprint;
 };
 
@@ -583,22 +586,20 @@ inline SearchResult search_bidir(const State& start, const Params& P, Ctx& C) {
 }
 
 // Canonical minimax flood (flood.hpp), compaction, exact realization.
-inline SearchResult search_cflood(const State& start, const Params& P, Ctx& C) {
+// `ccor` = corridor classes to stop at (nullptr: trivial table only).
+inline SearchResult cflood_once(const State& start, const canon::CKey& k0, const Params& P, Ctx& C,
+                                const canon::CanonCorridor* ccor, long long budget, double tlimit) {
   using namespace canon;
   SearchResult R;
   static const TrivialTable NOTABLE;
   const TrivialTable& T = C.triv ? *C.triv : NOTABLE;
-  CKey k0;
-  if (!class_of(start, k0)) {
-    R.note = "too_long";
-    return R;
-  }
+  const double t0 = C.elapsed();
   FloodParams FP;
-  FP.budget = P.max_nodes;
+  FP.budget = budget;
   FP.capmax = P.maxlen;
   FP.umax = P.cu;
-  FP.time_limit = P.time_limit;
-  FloodResult F = flood(k0, FP, T, C.ccor, C.self);
+  FP.time_limit = tlimit;
+  FloodResult F = flood(k0, FP, T, ccor, C.self);
   R.nodes = F.visited;
   R.water = F.water;
   R.barrier_lb = F.kind == HIT_NONE ? F.barrier_lb : -1;
@@ -619,7 +620,7 @@ inline SearchResult search_cflood(const State& start, const Params& P, Ctx& C) {
   if (!mv && path.size() != F.path.size()) mv = realize_path(start, F.path, eg, C.cor, F.cor, RP);
   R.csteps = (int)path.size() - 1;
   char tbuf[96];
-  snprintf(tbuf, sizeof tbuf, " t_flood=%.2f t_compact=%.2f t_realize=%.2f", tf, tc - tf, C.elapsed() - tc);
+  snprintf(tbuf, sizeof tbuf, " t_flood=%.2f t_compact=%.2f t_realize=%.2f", tf - t0, tc - tf, C.elapsed() - tc);
   std::string info = F.note + " water=" + std::to_string(F.water) + " csteps=" + std::to_string(F.path.size() - 1) +
                      "->" + std::to_string(path.size() - 1) + " cpeak=" + std::to_string(path_peak(path)) + tbuf;
   if (!mv) {
@@ -628,8 +629,37 @@ inline SearchResult search_cflood(const State& start, const Params& P, Ctx& C) {
   }
   R.solved = true;
   R.path = *mv;
-  C.via_corridor = fixed_end;
+  R.via_corridor = fixed_end;
   R.note = info;
+  return R;
+}
+
+inline SearchResult search_cflood(const State& start, const Params& P, Ctx& C) {
+  using namespace canon;
+  canon::CKey k0;
+  if (!class_of(start, k0)) {
+    SearchResult R;
+    R.note = "too_long";
+    return R;
+  }
+  const bool dual = P.cdual > 0 && C.ccor && C.ccor->loaded();
+  SearchResult A, B;
+  if (dual) {   // trivial-table finish only: usually much shorter than a corridor splice
+    A = cflood_once(start, k0, P, C, nullptr, std::max(1LL, (long long)(P.max_nodes * P.cdual)),
+                    P.time_limit * P.cdual);
+    A.note = "[T] " + A.note;
+  }
+  B = cflood_once(start, k0, P, C, C.ccor, P.max_nodes, std::max(1.0, P.time_limit - C.elapsed()));
+  SearchResult R = B;
+  if (A.solved && (!B.solved || A.path.size() <= B.path.size())) {
+    R = A;
+    if (B.solved) R.note += " | corridor alt " + std::to_string(B.path.size());
+  } else if (A.solved || dual) {
+    R.note += " | " + (A.solved ? "[T] alt " + std::to_string(A.path.size()) : A.note);
+  }
+  R.nodes = A.nodes + B.nodes;
+  if (!R.solved) R.barrier_lb = std::max(A.barrier_lb, B.barrier_lb);
+  C.via_corridor = R.via_corridor;
   return R;
 }
 

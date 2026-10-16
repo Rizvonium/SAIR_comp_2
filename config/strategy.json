@@ -1,26 +1,28 @@
 {
-  "_note": "Analyst steering. Greedy descent cannot cross length barriers: cflood covers, cflood_deep escalates, Aut-orbit transport after every batch. Records are decided by path length and our paths are long (mean ~270): guided re-search cut 65->34 and 60->41 on record problems, so shortening now gets the largest share.",
-  "batch_jobs": 400,
-  "action_weights": {
-    "cover": 3.0,
-    "escalate": 0.6,
-    "bidir": 0.4,
-    "polish": 1.5,
-    "resolve": 3.0
-  },
-  "cover_preset": "cflood",
-  "ladder": [
-    "cflood",
-    "cflood_deep",
-    "beam_wide"
-  ],
-  "transport": true,
-  "transport_budget": 300,
-  "resolve_presets": [
-    "guided",
-    "guided_beam",
-    "guided",
-    "tail",
-    "gbfs_lam"
-  ]
+ "_note": "Analyst steering. Points go only to the shortest path; live SAIR records show our paths ~2.5x the record. Main cause: cflood stopped at the first corridor class and inherited long donor paths. cflood now also floods to the trivial table (cdual) and keeps the shorter realization; cflood_t (full budget, T_22 table) re-solves record problems first (ac-05773 107->64, ac-08279 212->103, ac-04623 132->93). Greedy descent cannot cross length barriers.",
+ "batch_jobs": 400,
+ "action_weights": {
+  "cover": 3.0,
+  "escalate": 0.6,
+  "bidir": 0.4,
+  "polish": 1.5,
+  "resolve": 3.0
+ },
+ "cover_preset": "cflood",
+ "ladder": [
+  "cflood",
+  "cflood_deep",
+  "beam_wide"
+ ],
+ "transport": true,
+ "transport_budget": 300,
+ "resolve_presets": [
+  "cflood_t",
+  "guided",
+  "guided_beam",
+  "polish",
+  "guided",
+  "tail",
+  "gbfs_lam"
+ ]
 }

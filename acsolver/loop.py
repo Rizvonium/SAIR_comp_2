@@ -51,6 +51,10 @@ PRESETS: dict[str, dict] = {
                "ctime": 10},
     "cflood_deep": {"strategy": "cflood", "max_nodes": 5_000_000, "time_limit": 540, "ccompact": 5_000_000,
                     "ctime": 30},
+    # record chasing: flood to the trivial table only (corridor splices inherit
+    # long donor paths), big budget; the corridor flood is the fallback
+    "cflood_t": {"strategy": "cflood", "cdual": 1.0, "max_nodes": 3_000_000, "time_limit": 240,
+                 "ccompact": 5_000_000, "ctime": 30},
     # re-shorten the stored best path with larger balls
     "polish": {"strategy": "polish", "d1": 5, "d2": 5, "ball_budget": 60_000_000, "shorten_time": 120},
 }

@@ -34,7 +34,7 @@ re-verified on import): `python3 -m acsolver import results/best_solutions.jsonl
 
 ```sh
 git clone --recurse-submodules <this repo> && cd SAIR_comp_2
-make && make endgame R=8 && make trivial L=20      # engine + shared tables (~1 min total)
+make && make endgame R=8 && make trivial L=20 && make trivial L=22   # engine + shared tables (~9 min total)
 python3 -m acsolver import results/best_solutions.jsonl   # restore verified results into a fresh DB
 
 scripts/run_forever.sh          # continuous loop: controller batches (cflood ladder), Aut-orbit transport,

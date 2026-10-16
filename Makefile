@@ -17,7 +17,7 @@ endgame: bin/acengine
 	./bin/acengine build-endgame --radius $${R:-7} --out data/endgame_r$${R:-7}.bin
 
 # Canonical trivial component T_L for the cflood strategy (L=20: ~2.9M
-# classes, ~1 minute on 2 threads, ~20 MB).
+# classes, ~1 minute on 2 threads, ~20 MB; L=22: 22M classes, ~7 minutes, 108 MB).
 # make trivial [L=22] [T=threads]
 L ?= 20
 T ?= 2
