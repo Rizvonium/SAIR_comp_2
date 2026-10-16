@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import html
 import json
+import re
 
 from . import db, official, problems
 
@@ -24,7 +25,7 @@ CSS = """
 --muted:#8f8e88;--grid:#33332f;--series:#3987e5;--accent:#d95926;--good:#0ca30c;--border:#3a3a36}
 *{box-sizing:border-box}body{margin:0;background:var(--surface);color:var(--ink);
 font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
-main{max-width:1180px;margin:0 auto;padding:20px 16px 60px}
+main{max-width:1180px;margin:0 auto;padding-block:20px 60px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
 h1{font-size:22px;margin:0 0 4px}h2{font-size:16px;margin:28px 0 10px}
 .sub{color:var(--ink2);margin:0 0 18px}
 .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,150px),1fr));gap:12px}
@@ -43,7 +44,7 @@ border-radius:6px;padding:4px 8px;font-size:12px;display:none;box-shadow:0 2px 8
 .note{white-space:pre-wrap;color:var(--ink2);font-size:13px}
 .pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:12px;font-weight:600;border:1px solid var(--border)}
 .pill.beating{color:var(--good);border-color:var(--good)}.pill.tied{color:var(--series);border-color:var(--series)}
-.pill.behind{color:var(--accent);border-color:var(--accent)}.pill.unsolved{color:var(--muted)}
+.pill.behind{color:var(--accent);border-color:var(--accent)}.pill.sole{color:var(--good);border-color:var(--good)}.pill.unsolved{color:var(--muted)}
 a{color:var(--series);overflow-wrap:anywhere}
 .grid2>*,.tiles>*{min-width:0}
 html,body{overflow-x:hidden}
@@ -159,12 +160,13 @@ def render(con) -> str:
              ("proven optimal", f"{n_opt:,}"), ("engine runs", f"{runs[0]:,}"),
              ("engine hours", f"{(runs[1] or 0) / 3600:.1f}")]
     from . import sair
-    recs, rec_src = sair.load_records()
+    recs, rec_src = sair.load_records("ac")
+    kteams = sair.load_kteams("ac")
     cmp_rows, n_beat, n_tie, n_behind = [], 0, 0, 0
-    for pid, rec in recs.items():
-        ours = best[pid]["length"] if pid in best else None
-        if ours is None:
-            state, gap = "unsolved", None
+    for pid, ours in ((p, r["length"]) for p, r in best.items()):
+        rec = recs.get(pid)
+        if rec is None:
+            state, gap = "sole", None
         elif ours < rec:
             state, gap = "beating", ours - rec
             n_beat += 1
@@ -175,19 +177,46 @@ def render(con) -> str:
             state, gap = "behind", ours - rec
             n_behind += 1
         cmp_rows.append((pid, ours, rec, gap, state))
-    order = {"beating": 0, "tied": 1, "behind": 2, "unsolved": 3}
-    cmp_rows.sort(key=lambda r: (order[r[4]], r[3] if r[3] is not None else 999))
-    cmp_html = _table(["problem", "my best", "record", "gap", "status"],
-                      [(_esc(p), o if o is not None else "–", r, (f"{g:+d}" if g is not None else "–"),
-                        f'<span class="pill {s}">{s}</span>') for p, o, r, g, s in cmp_rows], (1, 2, 3))
+    n_others = sum(1 for p in recs if p not in best)
+    n_nobody = len(P) - len(recs) - sum(1 for p in best if p not in recs)
+    order = {"beating": 0, "sole": 0, "tied": 1, "behind": 2}
+    cmp_rows.sort(key=lambda r: (order[r[4]], r[3] if r[3] is not None else -999))
+    shown = [r for r in cmp_rows if r[4] != "behind"] + [r for r in cmp_rows if r[4] == "behind"][:40]
+    cmp_html = _table(["problem", "my best", "record", "gap", "teams at record", "status"],
+                      [(_esc(p), o, r if r is not None else "–", (f"{g:+d}" if g is not None else "–"),
+                        kteams.get(p, 0), f'<span class="pill {s}">{s}</span>') for p, o, r, g, s in shown],
+                      (1, 2, 3, 4))
+    gaps = {}
+    for _, o, r, g, s in cmp_rows:
+        if s == "behind":
+            k = min(g // 10 * 10, 200)
+            gaps[k] = gaps.get(k, 0) + 1
+    gap_svg = _bars({k // 10: v for k, v in gaps.items()}, xlabel="gap /10 moves")
+    lb = sair.load_leaderboard()
+    lb_html = ""
+    for prob, label in (("ac", "AC"), ("stable_ac", "Stable AC")):
+        e = lb.get(prob)
+        if not e:
+            continue
+        rows = [(it.get("rank"), _esc((it.get("team") or {}).get("teamName") or (it.get("team") or {}).get("teamNumber")),
+                 f"{float(it.get('score') or 0):.1f}", it.get("currentBestCount")) for it in e["top"][:10]]
+        me = e.get("me")
+        mine = (f"Our team: rank {me.get('rank')}, {float(me.get('score') or 0):.2f} points, "
+                f"{me.get('currentBestCount')} current bests." if me else
+                "Our team is not on this leaderboard yet: no verified current-best path in the published standings.")
+        lb_html += (f"<div class='card'><b>{label} leaderboard</b> <span class='sub'>(published "
+                    f"{_esc(e.get('generated_at'))})</span><p class='sub' style='margin:4px 0 8px'>{_esc(mine)}</p>"
+                    + _table(["rank", "team", "points", "current bests"], rows, (0, 2, 3)) + "</div>")
     if recs:
-        tiles = [("beating the record", f"{n_beat}"), ("tied with the record", f"{n_tie}"),
-                 ("behind the record", f"{n_behind}")] + tiles
+        tiles = [("records beaten", f"{n_beat}"), ("records tied", f"{n_tie}"),
+                 ("behind the record", f"{n_behind}"), ("solved by others, not us", f"{n_others:,}"),
+                 ("solved by nobody", f"{n_nobody:,}")] + tiles
     tiles_html = "".join(f'<div class="tile"><div class="v">{v}</div><div class="k">{k}</div></div>' for k, v in tiles)
 
     hist = {}
-    for r in best.values():
-        hist[r["length"]] = hist.get(r["length"], 0) + 1
+    for r in best.values():   # buckets of 10 moves, 400+ in the last one
+        k = min(r["length"], 400) // 10
+        hist[k] = hist.get(k, 0) + 1
     ts, tm = _timeline(con)
 
     shortest = sorted(best.values(), key=lambda r: (r["length"], r["problem_id"]))[:15]
@@ -246,9 +275,12 @@ def render(con) -> str:
 <p class="sub">Generated {_esc(db.now())}. Every path below was accepted by the official SAIR verifier.</p>
 <div class="tiles">{tiles_html}</div>
 <h2>Me vs the leaderboard</h2>
-<div class="card"><p class="sub" style="margin:0 0 8px">My current best against the shortest record for every problem with a known
-record (source: {_esc(rec_src)}). Points go only to the shortest path, so <b>beating</b> and <b>tied</b> rows score.</p>
-{cmp_html if recs else "<p class='sub'>No records loaded yet: add them to config/known_records.json or run <code>python3 -m acsolver sair snapshot</code>.</p>"}</div>
+<div class="grid2">{lb_html}<div class="card"><b>How far behind the record our paths are</b>
+<p class="sub" style="margin:4px 0 0">Problems we solved but trail, by gap in moves (bucket 20 = 200 or more).</p>{gap_svg}</div></div>
+<div class="card" style="margin-top:16px"><p class="sub" style="margin:0 0 8px">Our best against the shortest verified record
+(source: {_esc(rec_src)}). Points go only to the shortest path (k tied teams get 2<sup>1-k</sup> each), so only
+<b>beating</b>, <b>sole</b> and <b>tied</b> rows score. Shown: every scoring row and the 40 closest chases.</p>
+{cmp_html if recs else "<p class='sub'>No records loaded yet: run <code>python3 -m acsolver sair refresh</code>.</p>"}</div>
 <h2>Export</h2>
 <div class="card"><a href="submission.txt" download>Download submission.txt</a> (all verified best paths) ·
 <a href="submission_parts/">upload-ready parts</a> · <a href="best_solutions.jsonl" download>best_solutions.jsonl</a> ·
@@ -258,7 +290,7 @@ record (source: {_esc(rec_src)}). Points go only to the shortest path, so <b>bea
 <div class="grid2">
 <div class="card"><b>Problems solved, after each batch</b>{_line(ts, ylabel="solved")}</div>
 <div class="card"><b>Total moves over solved problems, after each batch</b>{_line(tm, ylabel="total moves")}</div>
-<div class="card"><b>Best path length distribution</b>{_bars(hist, xlabel="length")}</div>
+<div class="card"><b>Best path length distribution</b>{_bars(hist, xlabel="length /10")}</div>
 </div>
 <h2>Leaderboards</h2>
 <div class="grid2">
@@ -278,7 +310,21 @@ record (source: {_esc(rec_src)}). Points go only to the shortest path, so <b>bea
 </main><div id="tip"></div><script>{JS}</script></body></html>"""
     OUT.parent.mkdir(exist_ok=True)
     OUT.write_text(page)
+    PUBLISH.write_text(publishable(page))
     return str(OUT)
+
+
+PUBLISH = official.ROOT / "data" / "dashboard_publish.html"
+
+
+def publishable(page: str) -> str:
+    """Artifact version: no document skeleton (the host adds it), safe-area
+    gutters, and download links shown as file names (downloads are blocked)."""
+    m = re.search(r"<title>.*?</title>", page)
+    style = re.search(r"<style>.*?</style>", page, re.S).group(0)
+    body = page[page.index("<body>") + 6: page.rindex("</body>")]
+    body = re.sub(r'<a href="([^"]+)"[^>]*>(.*?)</a>', r"<code>\2</code>", body)
+    return (m.group(0) + '\n<meta name="claude:viewport-fit-sides" content="cover">\n' + style + "\n" + body)
 
 
 def _pretty(body: str) -> str:

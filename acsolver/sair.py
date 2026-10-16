@@ -233,6 +233,12 @@ def submit(con, yes=False, note="", include_ties=True, max_batches=1, resubmit=F
                        "lines": len(b), "first": b[0][0], "last": b[-1][0]})
         print("submitted:", sid, f"({len(b)} lines)")
         results.append(res)
+    if yes:
+        for problem in PROBLEMS:   # keep the dashboard's standings fresh
+            try:
+                leaderboard(problem)
+            except ApiError as e:
+                print("leaderboard refresh failed:", e)
     return results
 
 
@@ -261,9 +267,20 @@ def summarize_status(res: dict) -> str:
     return "\n".join(out)
 
 
+LEADERBOARD = official.ROOT / "data" / "sair_leaderboard.json"
+
+
+def load_leaderboard() -> dict:
+    return json.loads(LEADERBOARD.read_text()) if LEADERBOARD.exists() else {}
+
+
 def leaderboard(problem="ac", top=15) -> str:
     d = call("GET", f"/competitions/acc/leaderboard?problem={problem}").get("data") or {}
     mine = (call("GET", f"/competitions/acc/leaderboard/me?problem={problem}").get("data") or {}).get("entry")
+    cache = load_leaderboard()
+    cache[problem] = {"generated_at": d.get("generatedAt"), "fetched_at": db.now(), "me": mine,
+                      "n_teams": len(d.get("items") or []), "top": (d.get("items") or [])[:25]}
+    LEADERBOARD.write_text(json.dumps(cache))
     lines = [f"{problem} leaderboard (generated {d.get('generatedAt')}):"]
     for it in (d.get("items") or [])[:top]:
         t = it.get("team") or {}
@@ -280,7 +297,7 @@ def leaderboard(problem="ac", top=15) -> str:
 def main(argv):
     import argparse
     ap = argparse.ArgumentParser(prog="acsolver sair")
-    ap.add_argument("cmd", choices=["me", "spec", "snapshot", "submit", "status", "mine", "leaderboard"])
+    ap.add_argument("cmd", choices=["me", "spec", "snapshot", "submit", "status", "mine", "leaderboard", "refresh"])
     ap.add_argument("arg", nargs="?")
     ap.add_argument("--yes", action="store_true", help="really submit (consumes daily quota)")
     ap.add_argument("--note", default="")
@@ -314,6 +331,10 @@ def main(argv):
             print(json.dumps(call("GET", "/competitions/acc/submissions/mine"), indent=1))
         elif a.cmd == "leaderboard":
             print(leaderboard(a.problem))
+        elif a.cmd == "refresh":   # snapshots + leaderboards of both problems (for the dashboard)
+            for problem in PROBLEMS:
+                snapshot(problem)
+                print(leaderboard(problem, top=5))
     except ApiError as e:
         print("error:", e)
         return 1
