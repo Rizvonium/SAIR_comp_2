@@ -26,6 +26,7 @@ struct Corridor {
   std::vector<Entry> entries;
   std::vector<std::vector<int>> paths;
   std::vector<uint64_t> owner;  // hash of the problem id each path solves
+  std::vector<State> starts;    // start state of each path
   bool loaded() const { return !paths.empty(); }
 
   void add_path(const State& start, const std::vector<int>& path, uint64_t own = 0) {
@@ -40,6 +41,7 @@ struct Corridor {
     if (!is_target(s)) return;  // not a solution: ignore
     paths.push_back(path);
     owner.push_back(own);
+    starts.push_back(start);
     for (size_t i = 0; i + 1 < hs.size(); ++i) {
       uint32_t rem = (uint32_t)(path.size() - i);
       uint32_t* e = map.findm(hs[i]);

@@ -44,6 +44,13 @@ PRESETS: dict[str, dict] = {
     # guided re-search from an intermediate state of the best path
     "tail": {"strategy": "gbfs", "lam": 0.5, "self_corridor": 1, "tail_frac": 0.5, "max_nodes": 2_000_000,
              "time_limit": 15},
+    # canonical minimax flood (engine/flood.hpp): climbs over length barriers
+    # in the quotient by rotation/inversion/relator order/B2 automorphisms;
+    # budget = classes visited, uses the trivial component data/trivial_c*.bin
+    "cflood": {"strategy": "cflood", "max_nodes": 300_000, "time_limit": 60, "ccompact": 2_000_000,
+               "ctime": 10},
+    "cflood_deep": {"strategy": "cflood", "max_nodes": 5_000_000, "time_limit": 540, "ccompact": 5_000_000,
+                    "ctime": 30},
     # re-shorten the stored best path with larger balls
     "polish": {"strategy": "polish", "d1": 5, "d2": 5, "ball_budget": 60_000_000, "shorten_time": 120},
 }
@@ -125,6 +132,10 @@ def run_batch(con, batch_id: int, threads: int | None = None, endgame="default",
     cor = write_corridors(con)
     if cor:
         gopts["corridors"] = str(cor)
+    if any(r.get("params", {}).get("strategy") == "cflood" for r in solve_recs):
+        triv = engine.default_trivial()
+        if triv:
+            gopts["trivial"] = str(triv)
     if model:
         gopts["model"] = str(model)
     if macros:
@@ -157,6 +168,9 @@ def run_batch(con, batch_id: int, threads: int | None = None, endgame="default",
                 res["raw_path"] = pre + res["raw_path"]
         if res.get("via"):
             res["note"] = ((res.get("note") or "") + " via=" + res["via"]).strip()
+        if res.get("fingerprint"):  # cflood: barrier proof + pocket signature
+            res["note"] = ((res.get("note") or "") + " barrier_lb=%s fp=%s" % (res.get("barrier_lb"),
+                                                                             res["fingerprint"])).strip()
         verdict = None
         if res.get("solved"):
             verdict = official.verify_one(j["problem_id"], res["path"], problems.manifest_for(j["problem_id"]))

@@ -32,6 +32,22 @@ def default_endgame() -> Path | None:
     return tables[-1] if tables else None
 
 
+def default_trivial() -> Path | None:
+    """Largest canonical trivial-component table in data/ (trivial_c<L>.bin)."""
+    tables = sorted(DATA.glob("trivial_c*.bin"), key=lambda p: int(p.stem.split("_c")[1]))
+    return tables[-1] if tables else None
+
+
+def build_trivial(cap: int = 20, threads: int = 2) -> Path:
+    ensure_built()
+    out = DATA / f"trivial_c{cap}.bin"
+    DATA.mkdir(exist_ok=True)
+    if not out.exists():
+        subprocess.run([str(BIN), "build-trivial", "--cap", str(cap), "--out", str(out), "--threads", str(threads)],
+                       check=True)
+    return out
+
+
 def _flags(params: dict) -> list[str]:
     out = []
     for k, v in params.items():
