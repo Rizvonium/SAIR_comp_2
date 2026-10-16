@@ -21,7 +21,8 @@
 namespace ac {
 
 // BFS ball around s, up to radius r and at most max_nodes states.
-inline void bfs_ball(const State& s, int r, Arena& A, HashMap& H, long long max_nodes = 50000000) {
+inline void bfs_ball(const State& s, int r, Arena& A, HashMap& H, long long max_nodes = 50000000,
+                     int cap = 1 << 30) {
   A.clear();
   H.reset(1 << 12);
   A.add(s.r[0].data(), (int)s.r[0].size(), s.r[1].data(), (int)s.r[1].size(), UINT32_MAX, 255, 0);
@@ -41,6 +42,7 @@ inline void bfs_ball(const State& s, int r, Arena& A, HashMap& H, long long max_
         int n0 = nd.l0, n1 = nd.l1;
         if (TARGET_REL[m] == 0) b0 = buf.data(), n0 = n;
         else b1 = buf.data(), n1 = n;
+        if (n0 + n1 > cap) continue;
         uint64_t h = hash_state(b0, n0, b1, n1);
         if (!H.insert(h, (uint32_t)A.nodes.size())) continue;
         A.add(b0, n0, b1, n1, (uint32_t)idx, m, d);
@@ -53,7 +55,7 @@ inline void bfs_ball(const State& s, int r, Arena& A, HashMap& H, long long max_
 }
 
 // Shortest path from s to t of length <= maxd (bidirectional BFS).
-inline std::optional<std::vector<int>> bridge(const State& s, const State& t, int maxd) {
+inline std::optional<std::vector<int>> bridge(const State& s, const State& t, int maxd, int cap = 1 << 30) {
   uint64_t ht = hash_state(t);
   if (hash_state(s) == ht) return std::vector<int>{};
   Arena A[2];
@@ -84,6 +86,7 @@ inline std::optional<std::vector<int>> bridge(const State& s, const State& t, in
         int n0 = nd.l0, n1 = nd.l1;
         if (TARGET_REL[m] == 0) b0 = buf.data(), n0 = n;
         else b1 = buf.data(), n1 = n;
+        if (n0 + n1 > cap) continue;
         uint64_t h = hash_state(b0, n0, b1, n1);
         uint32_t ni = (uint32_t)A[k].nodes.size();
         if (!H[k].insert(h, ni)) continue;
@@ -110,6 +113,11 @@ struct ShortenParams {
   long long ball_budget = 40000000;    // max total states stored in the j-balls map
   int max_rounds = 20;
   double time_limit = 60;
+  // >= 0: balls keep only states with total <= (total of the ball's centre)
+  // + ball_slack; radii are then bounded by ball_nodes per ball instead of
+  // the uncapped 12^r estimate, so much longer windows can be re-optimised
+  int ball_slack = -1;
+  long long ball_nodes = 2000000;
 };
 
 inline std::vector<State> states_along(const State& start, const std::vector<int>& path) {
@@ -229,15 +237,22 @@ inline std::vector<int> ball_round(const State& start, const std::vector<int>& p
     for (int i = 0; i < r; ++i) t *= 12, s += t;
     return s;
   };
-  while (d2 > 1 && ballsz(d2) * (long long)(n + 1) > SP.ball_budget) --d2;
   int d1 = SP.d1;
-  while (d1 > 1 && ballsz(d1) * (long long)(n + 1) > SP.ball_budget * 4) --d1;
+  const bool capped = SP.ball_slack >= 0;
+  long long jnodes = 50000000;
+  if (!capped) {
+    while (d2 > 1 && ballsz(d2) * (long long)(n + 1) > SP.ball_budget) --d2;
+    while (d1 > 1 && ballsz(d1) * (long long)(n + 1) > SP.ball_budget * 4) --d1;
+  } else {
+    jnodes = std::max(1000LL, std::min(SP.ball_nodes, SP.ball_budget / (n + 1)));
+  }
+  auto capof = [&](int j) { return capped ? (int)(st[j].r[0].size() + st[j].r[1].size()) + SP.ball_slack : (1 << 30); };
 
   HashMap M(1 << 16);  // u -> (j << 8 | b), maximizing j - b
   Arena A;
   HashMap H;
   for (int j = n; j >= 0; --j) {
-    bfs_ball(st[j], d2, A, H);
+    bfs_ball(st[j], d2, A, H, jnodes, capof(j));
     for (uint32_t k = 0; k < A.nodes.size(); ++k) {
       uint64_t h = hash_state(A.w0(k), A.nodes[k].l0, A.w1(k), A.nodes[k].l1);
       uint32_t v = ((uint32_t)j << 8) | A.nodes[k].depth;
@@ -262,7 +277,7 @@ inline std::vector<int> ball_round(const State& start, const std::vector<int>& p
       if (cost[n] < cost[END]) cost[END] = cost[n], from[END] = n, wlen[END] = 0;
       continue;
     }
-    bfs_ball(st[i], d1, A, H);
+    bfs_ball(st[i], d1, A, H, capped ? SP.ball_nodes * 4 : 50000000, capof(i));
     for (uint32_t k = 0; k < A.nodes.size(); ++k) {
       int a = A.nodes[k].depth;
       const Letter* w0 = A.w0(k);
@@ -290,7 +305,7 @@ inline std::vector<int> ball_round(const State& start, const std::vector<int>& p
       if (i == n) continue;
       // reach a state with depth + dist == wlen, then finish exactly
       int target = wlen[END];
-      bfs_ball(st[i], d1, A, H);
+      bfs_ball(st[i], d1, A, H, capped ? SP.ball_nodes * 4 : 50000000, capof(i));
       bool ok = false;
       for (uint32_t k = 0; k < A.nodes.size() && !ok; ++k) {
         int e = eg.dist(A.w0(k), A.nodes[k].l0, A.w1(k), A.nodes[k].l1);
@@ -307,7 +322,7 @@ inline std::vector<int> ball_round(const State& start, const std::vector<int>& p
     } else if (wlen[j] == -1) {
       np.push_back(path[i]);
     } else {
-      auto b = bridge(st[i], st[j], wlen[j]);
+      auto b = bridge(st[i], st[j], wlen[j], capped ? std::max(capof(i), capof(j)) : (1 << 30));
       if (!b) return path;
       np.insert(np.end(), b->begin(), b->end());
     }

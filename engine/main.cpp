@@ -82,6 +82,8 @@ static void set_param(Params& P, ShortenParams& SP, const std::string& k, const 
   else if (k == "d1") SP.d1 = std::stoi(v);
   else if (k == "d2") SP.d2 = std::stoi(v);
   else if (k == "ball_budget") SP.ball_budget = std::stoll(v);
+  else if (k == "ball_slack") SP.ball_slack = std::stoi(v);
+  else if (k == "ball_nodes") SP.ball_nodes = std::stoll(v);
   else if (k == "shorten_rounds") SP.max_rounds = std::stoi(v);
   else if (k == "shorten_time") SP.time_limit = std::stod(v);
   // flags consumed elsewhere
