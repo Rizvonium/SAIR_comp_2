@@ -79,6 +79,9 @@ def cmd_status(con, args):
 
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
+    if argv[:1] == ["union"]:  # path union has its own argument parser
+        from . import union
+        return union.main(argv[1:])
     if argv[:1] == ["sair"]:  # SAIR API client has its own argument parser
         from . import sair
         return sair.main(argv[1:])

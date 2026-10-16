@@ -227,6 +227,13 @@ def run_loop(con, iterations=1, threads=None):
         stats = loop.run_batch(con, bid, threads=threads, macros=macros, model=model)
         if cfg.get("transport"):
             run_transport(con, cfg, threads=threads)
+        if cfg.get("union", True):
+            # path union: the batch's new paths may splice with older ones
+            from . import union
+            touched = [r[0] for r in con.execute("SELECT DISTINCT problem_id FROM runs WHERE batch_id=? AND solved=1",
+                                                 (bid,))]
+            st = union.union_all(con, touched)
+            print(f"union: {st}", flush=True)
         review(con, bid, stats, time.time() - t0, cfg)
 
 
