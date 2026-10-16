@@ -104,19 +104,43 @@ def plan(con, cfg) -> tuple[list[dict], dict, str]:
     def tot(p):
         return len(P[p]["r0"]) + len(P[p]["r1"])
 
+    # live records (SAIR snapshot): points go only to the shortest path, so
+    # coverage favours problems nobody has solved (sole solver = 1 point) and
+    # problems with short records; shortening favours small gaps to the record
+    from . import sair
+    recs, _ = sair.load_records("ac")
+    have_recs = bool(recs)
+
+    def gap(p):   # relative gap to the record (<= 0: we hold it)
+        r = recs.get(p)
+        return (best[p] - r) / r if r else 0.0
+
+    cover_all = sorted((p for p in P if p not in tried), key=lambda p: (tot(p), p))
+    if have_recs:   # interleave: nobody solved (by start length) / others solved (by record length)
+        a = [p for p in cover_all if p not in recs]
+        b = sorted((p for p in cover_all if p in recs), key=lambda p: (recs[p], tot(p), p))
+        cover_all = [x for pair in zip(a, b) for x in pair] + a[len(b):] + b[len(a):]
+
+    def shorten_key(p, n_prev):
+        if not have_recs:
+            return (n_prev, -best[p])
+        g = gap(p)
+        # behind with a small gap first, then ties (beating a tie = full point), held records last
+        return (n_prev, 0 if g > 0 else (1 if g == 0 else 2), g if g > 0 else 0, -best[p])
+
     pools = {
-        "cover": sorted((p for p in P if p not in tried), key=lambda p: (tot(p), p)),
+        "cover": cover_all,
         "escalate": sorted((p for p in P if p in tried and p not in best),
-                           key=lambda p: (status[p]["attempts"], tot(p))),
+                           key=lambda p: (status[p]["attempts"], 0 if p in recs else 1, recs.get(p, 0), tot(p))),
         "bidir": sorted((p for p in best if p.startswith("ac-") and best[p] <= cfg["bidir_max_len"]
                          and not status.get(p, {}).get("optimal")
                          and not any(a == "bidir" for a, _ in last_action.get(p, []))),
                         key=lambda p: best[p]),
         "polish": sorted((p for p in best if p.startswith("ac-")
                           and not any(a == "polish" for a, _ in last_action.get(p, []))
-                          and not status.get(p, {}).get("optimal")), key=lambda p: -best[p]),
+                          and not status.get(p, {}).get("optimal")), key=lambda p: shorten_key(p, 0)),
         "resolve": sorted((p for p in best if p.startswith("ac-") and not status.get(p, {}).get("optimal")),
-                          key=lambda p: (sum(1 for a, _ in last_action.get(p, []) if a == "resolve"), -best[p])),
+                          key=lambda p: shorten_key(p, sum(1 for a, _ in last_action.get(p, []) if a == "resolve"))),
     }
     yields = action_yield(con)
     # weight = analyst weight x (1 + normalized yield); unexplored actions get a bonus (UCB-style)
