@@ -93,10 +93,18 @@ RHS_INT = ("  | .ofNat k => mkApp (mkConst ``Int.ofNat) (mkNatLit k)\n"
            "  | .negSucc k => mkApp (mkConst ``Int.negSucc) (mkNatLit k)")
 
 
-def prepare(problem: str) -> Path:
-    d = WORK / problem
+MATHLIB = {"fib", "mertens", "primecount"}
+SHARED_PACKAGES = WORK / "fib" / ".lake" / "packages"   # one pinned Mathlib checkout + cache
+
+
+def prepare(problem: str, workdir: str | None = None) -> Path:
+    """Private copy of the official problem workspace (one per concurrent user)."""
+    d = WORK / (workdir or problem)
     if not d.exists():
         shutil.copytree(REPO / "problems" / problem, d)
+        if problem in MATHLIB and d != WORK / "fib":
+            (d / ".lake").mkdir(exist_ok=True)
+            (d / ".lake" / "packages").symlink_to(SHARED_PACKAGES)
     return d
 
 
@@ -107,8 +115,9 @@ def main(argv=None):
     ap.add_argument("--inputs")
     ap.add_argument("--seeds", type=int, default=2)
     ap.add_argument("--timeout", type=int, default=1800)
+    ap.add_argument("--workdir", help="private work directory name under /home/user/lkc/work (use one per agent)")
     a = ap.parse_args(argv)
-    d = prepare(a.problem)
+    d = prepare(a.problem, a.workdir)
     shutil.copy(a.submission, d / "Submission.lean")
     rc, out, secs = run(["lake", "build"], d, a.timeout)
     print(f"build: rc={rc} {secs:.1f}s")
