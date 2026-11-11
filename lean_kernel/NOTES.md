@@ -34,6 +34,19 @@ selected (not the best) — never submit anything not validated.
 | one `List.range`/`foldl` step | ~37 µs |
 | a primitive op on a 65,536-bit Nat vs a 64-bit Nat | about the same |
 
+More measurements (2026-11-11, fib work):
+| thing | cost |
+|---|---|
+| `Nat.log2 n` | 12–80 µs: NOT kernel-accelerated (well-founded recursion) — avoid |
+| `cond b x y` | ~10 µs (unfolds a matcher) |
+| `Bool.rec (motive := fun _ => α) y x b` or `Nat.rec` on a 0/1 literal | ~1 µs |
+| threading a `Prod` through a `Nat.rec` loop | ~4.6 µs/step extra |
+| continuation-style loop `Nat.rec (motive := fun _ => Nat → Nat → Nat)` passing state as plain args | cheapest loop shape found |
+
+Bit-length trick without `log2`: compute any cheap guess `c` and use
+`L := Bool.rec n c (Nat.beq (Nat.shiftRight n c) 0)`; correctness only needs `n >>> L = 0`,
+which holds in both branches (`n >>> n = 0`). See `solutions/fib/v2_cps_boolrec.lean`.
+
 Rules of thumb:
 1. In the computational path use the kernel-accelerated primitives directly: `Nat.add sub mul div
    mod land lor xor shiftLeft shiftRight pow log2 beq ble gcd` with `nat_lit k` constants.
