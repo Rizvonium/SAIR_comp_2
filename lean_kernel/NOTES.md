@@ -49,9 +49,10 @@ which holds in both branches (`n >>> n = 0`). See `solutions/fib/v2_cps_boolrec.
 
 Rules of thumb:
 1. In the computational path use the kernel-accelerated primitives directly: `Nat.add sub mul div
-   mod land lor xor shiftLeft shiftRight pow log2 beq ble gcd` with `nat_lit k` constants.
+   mod land lor xor shiftLeft shiftRight pow beq ble gcd` with `nat_lit k` constants (NOT `log2`).
    Avoid `HAdd/HMul/...` notation, `OfNat` numerals, `decide`, `if` on `Prop` (`Nat.decEq`
-   unfolds), `List`, `Array`, `Prod` where possible. Prefer `Bool`/`Nat.beq`/`Nat.ble` + `cond`.
+   unfolds), `cond`, `List`, `Array`, `Prod` where possible. Branch with `Bool.rec` on
+   `Nat.beq`/`Nat.ble` results, or `Nat.rec` on a 0/1 value.
 2. Minimize the number of kernel reduction steps; loops cost µs per iteration, big-number
    arithmetic is almost free. Bit-parallel (SWAR) encodings in one big `Nat` beat per-element
    loops by orders of magnitude.
