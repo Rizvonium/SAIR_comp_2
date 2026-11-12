@@ -76,3 +76,18 @@ Rules of thumb:
 
 ## Submissions
 See `submissions.jsonl`. v0 = official examples (all 8 submitted 2026-11-11).
+
+## First official edition with our entries (2026-11-12 08:00 UTC, cutoff 00:00 UTC)
+| problem | our rank | our total (official) | #1 | median | version scored |
+|---|---:|---:|---:|---:|---|
+| fib | 39/66 | 18.10M | 3.72M | 13.4M | v2 |
+| partition | 43/64 | 17.61M | 1.39M | 4.43M | v1 |
+| ca-rule110 | 56/56 | 2.16B | 3.01M | 5.98M | v0 example |
+| mertens | 43/48 | 7.15B | 1.50M | 10.96M | v0 example |
+| primecount | 50/50 | 6.03B | 1.39M | 4.81M | v0 example |
+| permanent | 49/51 | 698B | 23.9M | 425M | v0 example |
+| polydisc | 45/50 | 10.3B | 632M | 2.60B | v0 example |
+| sha256 | 46/50 | 183B | 8.90B | 17.5B | v0 example |
+
+Calibration: official / bench_ir ≈ 1.0 (fib v2 18.10M vs 17.06M local; partition v1 17.61M vs
+18.56M local). The earlier "×1.4" guess was wrong: bench_ir numbers are directly comparable.
