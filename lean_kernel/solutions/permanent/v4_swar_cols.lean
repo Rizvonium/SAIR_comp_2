@@ -972,7 +972,7 @@ theorem enc_sub (w : Nat) (f g : Nat → Nat) (n : Nat) (h : ∀ i, i < n → g 
     enc w f n - enc w g n = enc w (fun i => f i - g i) n := by
   have e := enc_add w (fun i => f i - g i) g n
   rw [enc_congr w (fun L => (fun i => f i - g i) L + g L) f n
-    (fun i hi => by have := h i hi; simp only; omega)] at e
+    (fun i hi => by have := h i hi; omega)] at e
   omega
 
 theorem magic (x m sh : Nat) (hx : x < 2 ^ 32) (hm : 0 < m) (hsh : 2 ^ 32 * m ≤ 2 ^ sh) :
@@ -1017,8 +1017,12 @@ theorem modA_enc (w n m sh : Nat) (x : Nat → Nat) (hx : ∀ i, i < n → x i <
   show enc w x n - ((enc w x n * ((1 <<< sh) / m + 1)) >>> sh &&& enc w (fun _ => 0xffffffff) n) * m = _
   rw [Nat.one_shiftLeft]
   have hc : 2 ^ sh / m + 1 ≤ 2 ^ (sh + 1) := by
-    have := Nat.div_le_self (2 ^ sh) m
-    rw [Nat.pow_succ]; have := Nat.two_pow_pos sh; omega
+    have h1 := Nat.div_le_self (2 ^ sh) m
+    have h2 := Nat.two_pow_pos sh
+    rw [Nat.pow_succ]
+    generalize 2 ^ sh = P at *
+    generalize P / m = Q at *
+    omega
   have hb : ∀ i, i < n → x i * (2 ^ sh / m + 1) < 2 ^ w := by
     intro i hi
     have h1 : x i * (2 ^ sh / m + 1) < 2 ^ 32 * 2 ^ (sh + 1) :=
@@ -1027,12 +1031,10 @@ theorem modA_enc (w n m sh : Nat) (x : Nat → Nat) (hx : ∀ i, i < n → x i <
     exact Nat.lt_of_lt_of_le h1 (Nat.pow_le_pow_right (by decide) (by omega))
   rw [enc_mul, enc_shr_and w hw0 _ n hb 32 sh 0xffffffff (by decide) (by omega), enc_mul, enc_sub]
   · apply enc_congr; intro i hi
-    simp only
     rw [lane_mod (x i) m sh (hx i hi) hm hsh]
     have := Nat.div_add_mod (x i) m
     omega
   · intro i hi
-    simp only
     rw [lane_mod (x i) m sh (hx i hi) hm hsh]
     exact Nat.mul_div_le (x i) m
 
@@ -1050,13 +1052,13 @@ theorem geA_enc (w n g : Nat) (p e : Nat → Nat) (hp : ∀ i, i < n → p i < 2
       enc w (fun i => if e i ≤ p i then 1 else 0) n := by
   have hw0 : 0 < w := by omega
   show ((enc w p n + enc w (fun _ => 2 ^ g) n) - enc w e n) >>> g &&& enc w (fun _ => 1) n = _
-  rw [enc_add, enc_sub w _ e n (fun i hi => by have := he i hi; simp only; omega)]
+  rw [enc_add, enc_sub w _ e n (fun i hi => by have := he i hi; omega)]
   have hb : ∀ i, i < n → (fun i => p i + 2 ^ g - e i) i < 2 ^ w := by
     intro i hi
     have h1 := hp i hi
     have h2 : 2 ^ (g + 1) ≤ 2 ^ w := Nat.pow_le_pow_right (by decide) hw
     rw [Nat.pow_succ] at h2
-    simp only; omega
+    omega
   rw [enc_shr_and w hw0 _ n hb 1 g 1 (by decide) (by omega)]
   apply enc_congr; intro i hi
   exact lane_ge g (p i) (e i) (hp i hi) (he i hi)
@@ -1075,6 +1077,10 @@ theorem lane_colB (i a v : Nat) (hia : i ≠ a) :
     | (simp only [show (1 : Nat) ||| 0 = 1 from rfl, show (0 : Nat) ||| 1 = 1 from rfl,
         show (1 : Nat) &&& 0 = 0 from rfl, show (0 : Nat) &&& 1 = 0 from rfl]; split <;> split <;> omega)
     | (split <;> split <;> omega)
+
+theorem add_def' (a b : Nat) : Nat.add a b = a + b := rfl
+theorem lor_def' (a b : Nat) : Nat.lor a b = a ||| b := rfl
+theorem land_def' (a b : Nat) : Nat.land a b = a &&& b := rfl
 
 theorem small_lt (d w x : Nat) (hw : w = d + 128) (hx : x < d) : x < 2 ^ w :=
   Nat.lt_trans hx (Nat.lt_of_lt_of_le Nat.lt_two_pow_self (Nat.pow_le_pow_right (by decide) (by omega)))
@@ -1119,8 +1125,8 @@ theorem cols_eq (fin : Nat → Nat → Nat) (d s : Nat) (hd : 3 ≤ d) (hs : s <
   have hA : colA (enc (d + 128) (fun _ => 1) d) (enc (d + 128) (fun _ => 2 ^ d) d) (enc (d + 128) (fun i => i) d) d
       (enc (d + 128) (fun i => permanentMix32 (hlane s 0x85ebca6b i) % Nat.sub d (nat_lit 1)) d) =
       enc (d + 128) (fun i => permanentColumnOne d s i) d := by
-    show _ + _ = _
-    rw [geA_enc (d + 128) d d _ _ (fun i hi => small_lt_d d _ (by have := hu i hi; omega)) hidx (by omega),
+    unfold colA
+    rw [add_def', geA_enc (d + 128) d d _ _ (fun i hi => small_lt_d d _ (by have := hu i hi; omega)) hidx (by omega),
       enc_add]
     apply enc_congr; intro i _
     rw [lane_colA]; rfl
@@ -1134,7 +1140,7 @@ theorem cols_eq (fin : Nat → Nat → Nat) (d s : Nat) (hd : 3 ≤ d) (hs : s <
     have hv1 : Nat.add (enc (d + 128) (fun i => permanentMix32 (hlane s 0xc2b2ae35 i) % Nat.sub d (nat_lit 2)) d)
         (enc (d + 128) (fun _ => 1) d) =
         enc (d + 128) (fun i => permanentMix32 (hlane s 0xc2b2ae35 i) % Nat.sub d (nat_lit 2) + 1) d := by
-      show _ + _ = _; rw [enc_add]
+      rw [add_def', enc_add]
     rw [hv1]
     have hvd : ∀ i, i < d → permanentMix32 (hlane s 0xc2b2ae35 i) % Nat.sub d (nat_lit 2) < 2 ^ d :=
       fun i hi => small_lt_d d _ (by have := hv i hi; omega)
@@ -1147,8 +1153,7 @@ theorem cols_eq (fin : Nat → Nat → Nat) (d s : Nat) (hd : 3 ≤ d) (hs : s <
       · exact Nat.two_pow_pos _
     rw [geA_enc (d + 128) d d _ _ hvd hidx (by omega), geA_enc (d + 128) d d _ _ hvd hcd (by omega),
       geA_enc (d + 128) d d _ _ hv1d hidx (by omega), geA_enc (d + 128) d d _ _ hv1d hcd (by omega)]
-    show (_ + (_ ||| _)) + (_ &&& _) = _
-    rw [enc_or (d + 128) (by omega) _ _ d (fun _ _ => h01 _) (fun _ _ => h01 _),
+    rw [add_def', add_def', lor_def', land_def', enc_or (d + 128) (by omega) _ _ d (fun _ _ => h01 _) (fun _ _ => h01 _),
       enc_and (d + 128) (by omega) _ _ d (fun _ _ => h01 _) (fun _ _ => h01 _), enc_add, enc_add]
     apply enc_congr; intro i hi
     simp only
@@ -1157,7 +1162,7 @@ theorem cols_eq (fin : Nat → Nat → Nat) (d s : Nat) (hd : 3 ≤ d) (hs : s <
   rw [hB]
 
 /-- Reading lane `t` (any value below `2^w`). -/
-theorem extract2 (w d t : Nat) (f : Nat → Nat) (hw : 0 < w) (ht : t < d)
+theorem extract2 (w d t : Nat) (f : Nat → Nat) (ht : t < d)
     (hf : ∀ i, i < d → f i < 2 ^ w) :
     Nat.land (Nat.shiftRight (enc w f d) (Nat.mul t w)) (Nat.sub (Nat.shiftLeft (nat_lit 1) w) (nat_lit 1)) = f t := by
   show (enc w f d >>> (t * w)) &&& ((1 <<< w) - 1) = f t
@@ -1172,8 +1177,52 @@ theorem rowF2_eq (d s W t X : Nat) (hd : 3 ≤ d) (ht : t < d) :
       (enc (d + 128) (fun i => permanentColumnOne d s i) d) (enc (d + 128) (fun i => permanentColumnTwo d s i) d) t X =
       step W t (permanentColumnOne d s t) (permanentColumnTwo d s t) X := by
   unfold rowF2 rowS2
-  rw [extract2 (d + 128) d t _ (by omega) ht (fun i hi => small_lt d _ rfl (col_facts d s i hd hi).1),
-    extract2 (d + 128) d t _ (by omega) ht (fun i hi => small_lt d _ rfl (col_facts d s i hd hi).2.1)]
+  rw [extract2 (d + 128) d t _ ht (fun i hi => small_lt d (d + 128) _ rfl (col_facts d s i hd hi).1),
+    extract2 (d + 128) d t _ ht (fun i hi => small_lt d (d + 128) _ rfl (col_facts d s i hd hi).2.1)]
+
+theorem step_eq (W i a b X : Nat) :
+    step W i a b X = X / 2 ^ (W * 2 ^ i) + X / 2 ^ (W * 2 ^ a) + X / 2 ^ (W * 2 ^ b) := by
+  show X >>> (W <<< i) + X >>> (W <<< a) + X >>> (W <<< b) = _
+  simp only [Nat.shiftRight_eq_div_pow, Nat.shiftLeft_eq]
+
+/-- Shifting a packed number right by `j` lanes. -/
+theorem enc_shift_lanes (W d j : Nat) (f : Nat → Nat) (hj : j < d) (hf : ∀ L, f L < 2 ^ W)
+    (hz : ∀ L, 2 ^ d ≤ L → f L = 0) :
+    enc W f (2 ^ d) / 2 ^ (W * 2 ^ j) = enc W (fun L => f (L + 2 ^ j)) (2 ^ d) := by
+  have hle : 2 ^ j ≤ 2 ^ d := Nat.pow_le_pow_right (by decide) (by omega)
+  have e : 2 ^ d = 2 ^ j + (2 ^ d - 2 ^ j) := by omega
+  conv => lhs; rw [e]
+  rw [enc_shiftRight W f (2 ^ j) _ (fun L _ => hf L)]
+  conv => rhs; rw [show 2 ^ d = (2 ^ d - 2 ^ j) + 2 ^ j by omega]
+  rw [enc_tail_zero W _ (2 ^ d - 2 ^ j) (2 ^ j) (fun L hL => hz _ (by omega))]
+
+theorem loopG_succ (f : Nat → Nat → Nat) (t X : Nat) : loopG f (t + 1) X = loopG f t (f t X) := rfl
+
+theorem rowF_eq (d s W w dm1 dm2 t X : Nat) (ht : t < d) (hw : w = d + 128)
+    (h1 : dm1 = d - 1) (h2 : dm2 = d - 2) :
+    rowF W w dm1 dm2 (enc w (fun i => permanentMix32 (hlane s 0x85ebca6b i)) d)
+      (enc w (fun i => permanentMix32 (hlane s 0xc2b2ae35 i)) d) t X =
+      step W t (permanentColumnOne d s t) (permanentColumnTwo d s t) X := by
+  have hw64 : 64 ≤ w := by omega
+  have e1 : Nat.mod (Nat.land (Nat.shiftRight (enc w (fun i => permanentMix32 (hlane s 0x85ebca6b i)) d)
+      (Nat.mul t w)) (nat_lit 0xffffffff)) dm1 =
+      permanentMix32 (s ^^^ (t * 0x9e3779b9) ^^^ 0x85ebca6b) % (d - 1) := by
+    rw [extract w d t _ hw64 ht (fun i _ => Nat.lt_of_lt_of_le (mix_lt _)
+      (Nat.pow_le_pow_right (by decide) (by omega))) (mix_lt _), h1]
+    rfl
+  have e2 : Nat.mod (Nat.land (Nat.shiftRight (enc w (fun i => permanentMix32 (hlane s 0xc2b2ae35 i)) d)
+      (Nat.mul t w)) (nat_lit 0xffffffff)) dm2 =
+      permanentMix32 (s ^^^ (t * 0x9e3779b9) ^^^ 0xc2b2ae35) % (d - 2) := by
+    rw [extract w d t _ hw64 ht (fun i _ => Nat.lt_of_lt_of_le (mix_lt _)
+      (Nat.pow_le_pow_right (by decide) (by omega))) (mix_lt _), h2]
+    rfl
+  unfold rowF rowS rowC
+  rw [e1, e2, skip_eq, skip2_eq]
+  have hc1 : permanentColumnOne d s t =
+      permanentSkipOne t (permanentMix32 (s ^^^ (t * 0x9e3779b9) ^^^ 0x85ebca6b) % (d - 1)) := rfl
+  have hc2 : permanentColumnTwo d s t = permanentSkipTwo t (permanentColumnOne d s t)
+      (permanentMix32 (s ^^^ (t * 0x9e3779b9) ^^^ 0xc2b2ae35) % (d - 2)) := rfl
+  rw [← hc1, ← hc2]
 
 theorem loop_spec (d s : Nat) (hd : 3 ≤ d) (W : Nat) (hW : 3 ^ d < 2 ^ W) (f : Nat → Nat → Nat)
     (hf : ∀ t X, t < d → f t X = step W t (permanentColumnOne d s t) (permanentColumnTwo d s t) X) :
