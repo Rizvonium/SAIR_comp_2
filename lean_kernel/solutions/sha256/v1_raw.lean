@@ -386,6 +386,7 @@ theorem finish_eq (a b c d e f g h : Nat) (k : Cont) :
   show Nat.rec (motive := fun _ => Nat) (k a b c d e f g h) (fun _ _ => k a b c d e f g h)
     (a &&& 0) = _
   rw [Nat.and_zero]
+  rfl
 
 theorem packK_cons (kt : Nat) (ks : List Nat) : packK (kt :: ks) = kt + packK ks * 2^32 := by
   show (packK ks) <<< 32 + kt = _
@@ -398,25 +399,43 @@ theorem packK_shr (kt : Nat) (ks : List Nat) (h : kt < 2^32) : packK (kt :: ks) 
   rw [packK_cons, Nat.shiftRight_eq_div_pow, Nat.add_mul_div_right _ _ (Nat.two_pow_pos 32),
     Nat.div_eq_of_lt h, Nat.zero_add]
 
+theorem rec_succ {C : Nat → Sort _} (z : C 0) (s : (n : Nat) → C n → C (n + 1)) (n : Nat) :
+    Nat.rec (motive := C) z s (n + 1) = s n (Nat.rec (motive := C) z s n) := rfl
+
+/-- One unfolding of the round loop, in raw form. -/
+theorem loop_raw (n kv a b c d e f g h x0 x1 x2 x3 x4 x5 x6 x7 x8 x9 x10 x11 x12 x13 x14 x15 : Nat)
+    (k : Cont) :
+    loopR (n + 1) kv a b c d e f g h x0 x1 x2 x3 x4 x5 x6 x7 x8 x9 x10 x11 x12 x13 x14 x15 k =
+    loopR n (Nat.shiftRight kv (nat_lit 32))
+        (Nat.land (Nat.add (T1R kv h e f g x0) (T2R a b c)) w32) a b c
+        (Nat.land (Nat.add d (T1R kv h e f g x0)) w32) e f g
+        x1 x2 x3 x4 x5 x6 x7 x8 x9 x10 x11 x12 x13 x14 x15 (NWR x0 x1 x9 x14) k := by
+  unfold loopR
+  exact rfl
+
+theorem raw_a (kv kt x : Nat) (s : Digest) (hk : kv % 2^32 = kt % 2^32) (hs : DOK s) :
+    Nat.land (Nat.add (T1R kv s.h s.e s.f s.g x) (T2R s.a s.b s.c)) w32 = (round s kt x).a := by
+  show (T1n kv s.h s.e s.f s.g x + T2n s.a s.b s.c) &&& w32 = _
+  exact round_a kv kt x s hk hs
+
+theorem raw_e (kv kt x : Nat) (s : Digest) (hk : kv % 2^32 = kt % 2^32) (hs : DOK s) :
+    Nat.land (Nat.add s.d (T1R kv s.h s.e s.f s.g x)) w32 = (round s kt x).e := by
+  show (s.d + T1n kv s.h s.e s.f s.g x) &&& w32 = _
+  exact round_e kv kt x s hk hs
+
+theorem raw_w (w : Window) (hw : WOK w) : (NWR w.x0 w.x1 w.x9 w.x14) = w.nextWord := by
+  show NWn w.x0 w.x1 w.x9 w.x14 = _
+  exact nextWord_eq w hw
+
 theorem loop_succ (n kv kt : Nat) (s : Digest) (w : Window) (k : Cont)
     (hk : kv % 2^32 = kt % 2^32) (hs : DOK s) (hw : WOK w) :
     loopR (n + 1) kv s.a s.b s.c s.d s.e s.f s.g s.h
       w.x0 w.x1 w.x2 w.x3 w.x4 w.x5 w.x6 w.x7 w.x8 w.x9 w.x10 w.x11 w.x12 w.x13 w.x14 w.x15 k =
     loopR n (kv >>> 32)
-      (round s kt w.x0).a (round s kt w.x0).b (round s kt w.x0).c (round s kt w.x0).d
-      (round s kt w.x0).e (round s kt w.x0).f (round s kt w.x0).g (round s kt w.x0).h
-      (w.push w.nextWord).x0 (w.push w.nextWord).x1 (w.push w.nextWord).x2
-      (w.push w.nextWord).x3 (w.push w.nextWord).x4 (w.push w.nextWord).x5
-      (w.push w.nextWord).x6 (w.push w.nextWord).x7 (w.push w.nextWord).x8
-      (w.push w.nextWord).x9 (w.push w.nextWord).x10 (w.push w.nextWord).x11
-      (w.push w.nextWord).x12 (w.push w.nextWord).x13 (w.push w.nextWord).x14
-      (w.push w.nextWord).x15 k := by
-  show loopR n (kv >>> 32)
-      ((T1n kv s.h s.e s.f s.g w.x0 + T2n s.a s.b s.c) &&& w32) s.a s.b s.c
-      ((s.d + T1n kv s.h s.e s.f s.g w.x0) &&& w32) s.e s.f s.g
+      (round s kt w.x0).a s.a s.b s.c (round s kt w.x0).e s.e s.f s.g
       w.x1 w.x2 w.x3 w.x4 w.x5 w.x6 w.x7 w.x8 w.x9 w.x10 w.x11 w.x12 w.x13 w.x14 w.x15
-      (NWn w.x0 w.x1 w.x9 w.x14) k = _
-  rw [round_a kv kt w.x0 s hk hs, round_e kv kt w.x0 s hk hs, nextWord_eq w hw]
+      w.nextWord k := by
+  rw [loop_raw, raw_a kv kt w.x0 s hk hs, raw_e kv kt w.x0 s hk hs, raw_w w hw]
   rfl
 
 theorem loop_spec (k : Cont) : ∀ (ks : List Nat) (s : Digest) (w : Window),
@@ -431,12 +450,11 @@ theorem loop_spec (k : Cont) : ∀ (ks : List Nat) (s : Digest) (w : Window),
       rfl
   | kt :: ks, s, w, hks, hs, hw => by
       have hkt : kt < 2^32 := hks kt (List.mem_cons_self ..)
+      have ih := loop_spec k ks (round s kt w.x0) (w.push w.nextWord)
+        (fun x hx => hks x (List.mem_cons_of_mem _ hx)) (round_ok s kt w.x0 hs) (push_ok w hw)
       rw [List.length_cons, loop_succ ks.length (packK (kt :: ks)) kt s w k
-        (packK_mod kt ks) hs hw, packK_shr kt ks hkt,
-        loop_spec k ks (round s kt w.x0) (w.push w.nextWord)
-          (fun x hx => hks x (List.mem_cons_of_mem _ hx)) (round_ok s kt w.x0 hs) (push_ok w hw),
-        stream_succ]
-      rfl
+        (packK_mod kt ks) hs hw, packK_shr kt ks hkt, stream_succ]
+      exact ih
 
 /-! ### Compression, chain, encoding -/
 
@@ -449,9 +467,10 @@ def W0 (d : Digest) : Window :=
 theorem compress_spec (d : Digest) (hd : DOK d) (k : Cont) :
     compressR d.a d.b d.c d.d d.e d.f d.g d.h k = pass (sha256step d) k := by
   obtain ⟨ha, hb, hc, hd', he, hf, hg, hh⟩ := hd
+  have h0 : (0 : Nat) < 2^32 := by decide
   have hw : WOK (W0 d) :=
-    ⟨ha, hb, hc, hd', he, hf, hg, hh, by decide, by decide, by decide, by decide, by decide,
-      by decide, by decide, by decide⟩
+    ⟨ha, hb, hc, hd', he, hf, hg, hh, (by decide : (0x80000000 : Nat) < 2^32), h0, h0, h0, h0,
+      h0, h0, (by decide : (256 : Nat) < 2^32)⟩
   have hiv : DOK iv := ⟨by decide, by decide, by decide, by decide, by decide, by decide,
     by decide, by decide⟩
   show loopR K.length (packK K) iv.a iv.b iv.c iv.d iv.e iv.f iv.g iv.h
@@ -459,8 +478,7 @@ theorem compress_spec (d : Digest) (hd : DOK d) (k : Cont) :
     (W0 d).x8 (W0 d).x9 (W0 d).x10 (W0 d).x11 (W0 d).x12 (W0 d).x13 (W0 d).x14 (W0 d).x15 k = _
   rw [loop_spec k K iv (W0 d) K_ok hiv hw]
   obtain ⟨r, hr⟩ := generate_prefix 48 16 (W0 d)
-  have hsched : extendW 48 [d.a, d.b, d.c, d.d, d.e, d.f, d.g, d.h,
-      0x80000000, 0, 0, 0, 0, 0, 0, 256] = (W0 d).toList ++ generate 48 (W0 d) := by
+  have hsched : extendW 48 (W0 d).toList = (W0 d).toList ++ generate 48 (W0 d) := by
     simpa using extend_eq 48 [] (W0 d)
   have hzip : K.zip ((W0 d).toList ++ generate K.length (W0 d))
       = K.zip ((W0 d).toList ++ generate 48 (W0 d)) := by
@@ -479,12 +497,26 @@ theorem encode_spec (d : Digest) :
     <<< 32 + d.g) <<< 32 + d.h = _
   simp [encodeDigest, Nat.shiftLeft_eq]
 
+theorem iter_zero (step : Digest → Digest) (d : Digest) : iterDigest step 0 d = d := rfl
+
+theorem iter_succ (step : Digest → Digest) (t : Nat) (d : Digest) :
+    iterDigest step (t + 1) d = iterDigest step t (step d) := rfl
+
 theorem chain_spec : ∀ (t : Nat) (d : Digest), DOK d →
     chain t d.a d.b d.c d.d d.e d.f d.g d.h = encodeDigest (iterSha t d)
-  | 0, d, _ => encode_spec d
+  | 0, d, _ => by
+      have h : chain 0 d.a d.b d.c d.d d.e d.f d.g d.h = encodeR d.a d.b d.c d.d d.e d.f d.g d.h := by
+        unfold chain
+        exact rfl
+      rw [h, encode_spec]
+      exact congrArg encodeDigest (iter_zero sha256step d).symm
   | t + 1, d, hd => by
-      show compressR d.a d.b d.c d.d d.e d.f d.g d.h (chain t) = _
-      rw [compress_spec d hd]
+      have h : chain (t + 1) d.a d.b d.c d.d d.e d.f d.g d.h
+          = compressR d.a d.b d.c d.d d.e d.f d.g d.h (chain t) := by
+        unfold chain
+        exact rfl
+      have h2 : iterSha (t + 1) d = iterSha t (sha256step d) := iter_succ sha256step t d
+      rw [h, compress_spec d hd, h2]
       exact chain_spec t (sha256step d) (sha256step_ok d)
 
 theorem seed_ok (s : Nat) : DOK (seedDigest s) := by
@@ -492,7 +524,9 @@ theorem seed_ok (s : Nat) : DOK (seedDigest s) := by
     rw [seedStep32, land_w32]; exact mod_lt32 _
   exact ⟨h _, h _, h _, h _, h _, h _, h _, h _⟩
 
-theorem impl_correct : ∀ n, impl n = sha256Spec n := fun n =>
-  chain_spec (sha256Steps n) (seedDigest (sha256Seed n)) (seed_ok _)
+theorem impl_correct : ∀ n, impl n = sha256Spec n := by
+  intro n
+  unfold impl sha256Spec
+  exact chain_spec (sha256Steps n) (seedDigest (sha256Seed n)) (seed_ok _)
 
 end Submission
