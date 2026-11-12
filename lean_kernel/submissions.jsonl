@@ -12,3 +12,4 @@
 {"at": "2026-11-12T04:50:23Z", "problem": "ca-rule110", "sha256": "46421d9c614da4832038d061aec4cb2eba28a00cd1f944ac3117de1ecc1aa43f", "note": "v1-rawloop", "file": "lean_kernel/solutions/ca-rule110/v1_rawloop.lean", "submissionId": "2761"}
 {"at": "2026-11-12T04:50:29Z", "problem": "mertens", "sha256": "cdfabd2418c00251457b3e73210b337156b130d50909433d4759c6bf1a4ff932", "note": "v1-swar-sieve", "file": "lean_kernel/solutions/mertens/v1_swar_sieve.lean", "submissionId": "2762"}
 {"at": "2026-11-12T04:50:46Z", "problem": "partition", "sha256": "638ecb77e17dc99407f29a3b0da2282ede4366f0f619bd34dd9b5870bd625e73", "note": "v2-pentagonal", "file": "lean_kernel/solutions/partition/v2_pentagonal.lean", "submissionId": "2763"}
+{"at": "2026-11-12T04:51:55Z", "problem": "primecount", "sha256": "6496bdb791b90deb173a99b0dac2134c870386cca5cd5480421dfe3d3464278f", "note": "v1-lanesieve", "file": "lean_kernel/solutions/primecount/v1_lanesieve.lean", "submissionId": "2764"}
