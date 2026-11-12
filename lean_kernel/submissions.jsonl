@@ -17,3 +17,4 @@
 {"at": "2026-11-12T04:59:19Z", "problem": "ca-rule110", "sha256": "76486ce253dfba2c879f1de49398d92553e14919777c61e7c47080a022caf85f", "note": "v2-simd-lanes", "file": "lean_kernel/solutions/ca-rule110/v2_simd_lanes.lean", "submissionId": "2766"}
 {"at": "2026-11-12T05:03:55Z", "problem": "ca-rule110", "sha256": "d3039dc2e54c8ba9f0150f5d2613fdf30418136031e7fe06ba9a3836f777e114", "note": "v3-triple-evo", "file": "lean_kernel/solutions/ca-rule110/v3_triple_evo.lean", "submissionId": "2767"}
 {"at": "2026-11-12T05:06:15Z", "problem": "primecount", "sha256": "65b236fe396d0678b0906126964c2d63ac160e6c4a72cb7a2a1badafa84630e9", "note": "v4-computedE", "file": "lean_kernel/solutions/primecount/v4_computedE.lean", "submissionId": "2768"}
+{"at": "2026-11-12T05:16:50Z", "problem": "mertens", "sha256": "a104d7150f68cedab0dd218f83aa82730a0cba3acd0a0955112b26555bfc2d9e", "note": "v3-tiers5", "file": "lean_kernel/solutions/mertens/v3_tiers5.lean", "submissionId": "2769"}
