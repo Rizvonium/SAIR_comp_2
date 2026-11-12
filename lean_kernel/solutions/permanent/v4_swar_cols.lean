@@ -972,7 +972,7 @@ theorem enc_sub (w : Nat) (f g : Nat → Nat) (n : Nat) (h : ∀ i, i < n → g 
     enc w f n - enc w g n = enc w (fun i => f i - g i) n := by
   have e := enc_add w (fun i => f i - g i) g n
   rw [enc_congr w (fun L => (fun i => f i - g i) L + g L) f n
-    (fun i hi => by have := h i hi; omega)] at e
+    (fun i hi => by have := h i hi; show f i - g i + g i = f i; omega)] at e
   omega
 
 theorem magic (x m sh : Nat) (hx : x < 2 ^ 32) (hm : 0 < m) (hsh : 2 ^ 32 * m ≤ 2 ^ sh) :
@@ -1026,7 +1026,7 @@ theorem modA_enc (w n m sh : Nat) (x : Nat → Nat) (hx : ∀ i, i < n → x i <
   have hb : ∀ i, i < n → x i * (2 ^ sh / m + 1) < 2 ^ w := by
     intro i hi
     have h1 : x i * (2 ^ sh / m + 1) < 2 ^ 32 * 2 ^ (sh + 1) :=
-      Nat.lt_of_lt_of_le (Nat.mul_lt_mul_of_pos_right (hx i hi) (by omega)) (Nat.mul_le_mul_left _ hc)
+      Nat.lt_of_lt_of_le (Nat.mul_lt_mul_of_pos_right (hx i hi) (Nat.succ_pos _)) (Nat.mul_le_mul_left _ hc)
     rw [← Nat.pow_add] at h1
     exact Nat.lt_of_lt_of_le h1 (Nat.pow_le_pow_right (by decide) (by omega))
   rw [enc_mul, enc_shr_and w hw0 _ n hb 32 sh 0xffffffff (by decide) (by omega), enc_mul, enc_sub]
@@ -1058,6 +1058,7 @@ theorem geA_enc (w n g : Nat) (p e : Nat → Nat) (hp : ∀ i, i < n → p i < 2
     have h1 := hp i hi
     have h2 : 2 ^ (g + 1) ≤ 2 ^ w := Nat.pow_le_pow_right (by decide) hw
     rw [Nat.pow_succ] at h2
+    show p i + 2 ^ g - e i < 2 ^ w
     omega
   rw [enc_shr_and w hw0 _ n hb 1 g 1 (by decide) (by omega)]
   apply enc_congr; intro i hi
@@ -1197,32 +1198,6 @@ theorem enc_shift_lanes (W d j : Nat) (f : Nat → Nat) (hj : j < d) (hf : ∀ L
   rw [enc_tail_zero W _ (2 ^ d - 2 ^ j) (2 ^ j) (fun L hL => hz _ (by omega))]
 
 theorem loopG_succ (f : Nat → Nat → Nat) (t X : Nat) : loopG f (t + 1) X = loopG f t (f t X) := rfl
-
-theorem rowF_eq (d s W w dm1 dm2 t X : Nat) (ht : t < d) (hw : w = d + 128)
-    (h1 : dm1 = d - 1) (h2 : dm2 = d - 2) :
-    rowF W w dm1 dm2 (enc w (fun i => permanentMix32 (hlane s 0x85ebca6b i)) d)
-      (enc w (fun i => permanentMix32 (hlane s 0xc2b2ae35 i)) d) t X =
-      step W t (permanentColumnOne d s t) (permanentColumnTwo d s t) X := by
-  have hw64 : 64 ≤ w := by omega
-  have e1 : Nat.mod (Nat.land (Nat.shiftRight (enc w (fun i => permanentMix32 (hlane s 0x85ebca6b i)) d)
-      (Nat.mul t w)) (nat_lit 0xffffffff)) dm1 =
-      permanentMix32 (s ^^^ (t * 0x9e3779b9) ^^^ 0x85ebca6b) % (d - 1) := by
-    rw [extract w d t _ hw64 ht (fun i _ => Nat.lt_of_lt_of_le (mix_lt _)
-      (Nat.pow_le_pow_right (by decide) (by omega))) (mix_lt _), h1]
-    rfl
-  have e2 : Nat.mod (Nat.land (Nat.shiftRight (enc w (fun i => permanentMix32 (hlane s 0xc2b2ae35 i)) d)
-      (Nat.mul t w)) (nat_lit 0xffffffff)) dm2 =
-      permanentMix32 (s ^^^ (t * 0x9e3779b9) ^^^ 0xc2b2ae35) % (d - 2) := by
-    rw [extract w d t _ hw64 ht (fun i _ => Nat.lt_of_lt_of_le (mix_lt _)
-      (Nat.pow_le_pow_right (by decide) (by omega))) (mix_lt _), h2]
-    rfl
-  unfold rowF rowS rowC
-  rw [e1, e2, skip_eq, skip2_eq]
-  have hc1 : permanentColumnOne d s t =
-      permanentSkipOne t (permanentMix32 (s ^^^ (t * 0x9e3779b9) ^^^ 0x85ebca6b) % (d - 1)) := rfl
-  have hc2 : permanentColumnTwo d s t = permanentSkipTwo t (permanentColumnOne d s t)
-      (permanentMix32 (s ^^^ (t * 0x9e3779b9) ^^^ 0xc2b2ae35) % (d - 2)) := rfl
-  rw [← hc1, ← hc2]
 
 theorem loop_spec (d s : Nat) (hd : 3 ≤ d) (W : Nat) (hW : 3 ^ d < 2 ^ W) (f : Nat → Nat → Nat)
     (hf : ∀ t X, t < d → f t X = step W t (permanentColumnOne d s t) (permanentColumnTwo d s t) X) :
