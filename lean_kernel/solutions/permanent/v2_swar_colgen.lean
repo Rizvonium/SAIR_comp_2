@@ -701,7 +701,7 @@ theorem enc_shr_and (w : Nat) (hw : 0 < w) (f : Nat → Nat) (n : Nat) (hf : ∀
   apply Nat.eq_of_testBit_eq; intro k
   rw [Nat.testBit_and, Nat.testBit_shiftRight, enc_testBit w hw f n hf, enc_testBit w hw _ n (fun _ _ => hb),
     enc_testBit w hw _ n (fun i _ => Nat.lt_of_le_of_lt Nat.and_le_right hb), Nat.testBit_and,
-    Nat.testBit_shiftRight, Nat.testBit_two_pow_sub_one, Nat.testBit_two_pow_sub_one]
+    Nat.testBit_shiftRight, Nat.testBit_two_pow_sub_one]
   have hk := Nat.div_add_mod k w
   have hkw := Nat.mod_lt k hw
   generalize k / w = q at hk ⊢
@@ -731,6 +731,7 @@ theorem enc_shr_and (w : Nat) (hw : 0 < w) (f : Nat → Nat) (n : Nat) (hf : ∀
       simp only [decide_eq_decide]; exact h5.trans h4.symm
     rw [e1, e2, e3]
     simp [hr]
+    intro h _; exact h
   · simp [hr]
 
 theorem enc_const_lt (w n v : Nat) (hv : v < 2 ^ w) : ∀ i, i < n → (fun _ => v) i < 2 ^ w :=
@@ -788,8 +789,8 @@ theorem mixArr_enc (w n : Nat) (hw : 64 ≤ w) (x : Nat → Nat) (hx : ∀ i, i 
     mixArr (enc w (fun _ => 0xffffffff) n) (enc w x n) = enc w (fun i => permanentMix32 (x i)) n := by
   unfold mixArr
   rw [mRound_enc w n 16 _ hw (by decide) (by decide) x hx,
-    mRound_enc w n 15 _ hw (by decide) (by decide) _ (fun i _ => lane32_lt w hw _),
-    mLast_enc w n hw _ (fun i _ => lane32_lt w hw _)]
+    mRound_enc w n 15 _ hw (by decide) (by decide) _ (fun i _ => by unfold laneR; exact lane32_lt w hw _),
+    mLast_enc w n hw _ (fun i _ => by unfold laneR; exact lane32_lt w hw _)]
   apply enc_congr; intro i _
   exact lane_mix (x i)
 
@@ -819,14 +820,14 @@ theorem rep_eq (w d : Nat) (hw : 1 ≤ w) : rep w d = enc w (fun _ => 1) d := by
 
 theorem idx_eq (w d : Nat) (hw : 1 ≤ w) (hd : 1 ≤ d) : idx w d = enc w (fun i => i) d := by
   have key : ∀ n, enc w (fun i => i) (n + 1) * (2 ^ w - 1) ^ 2 + (n + 1) * 2 ^ (w * (n + 1)) =
-      n * 2 ^ (w * (n + 2)) + 2 ^ w := by
+      n * 2 ^ (w * (n + 1 + 1)) + 2 ^ w := by
     intro n
     induction n with
     | zero => simp [enc]
     | succ n ih =>
       rw [show n + 1 + 1 = (n + 1) + 1 from rfl]
       simp only [enc] at ih ⊢
-      rw [Nat.pow_mul] at ih ⊢
+      simp only [Nat.pow_mul] at ih ⊢
       have h2 : 2 ≤ 2 ^ w := by
         have := Nat.pow_le_pow_right (show 0 < 2 by decide) hw; simpa using this
       generalize enc w (fun i => i) n = E at ih ⊢
@@ -872,44 +873,45 @@ theorem hlane_lt (w d s salt : Nat) (hw : w = d + 128) (hs : s < 2 ^ 32) (hsalt 
     exact Nat.lt_of_lt_of_le this (Nat.pow_le_pow_right (by decide) (by omega))
   exact Nat.xor_lt_two_pow (Nat.xor_lt_two_pow h1 h3) h2
 
-theorem mixes_enc (d s w : Nat) (hw : w = d + 128) (hs : s < 2 ^ 32) (salt : Nat) (hsalt : salt < 2 ^ 32) :
+theorem mixes_enc (d s w : Nat) (hd1 : 1 ≤ d) (hw : w = d + 128) (hs : s < 2 ^ 32) (salt : Nat)
+    (hsalt : salt < 2 ^ 32) :
     mixes (Nat.mul (rep w d) (nat_lit 0xffffffff)) (rep w d) (hashArr s (rep w d) (idx w d)) salt =
       enc w (fun i => permanentMix32 (hlane s salt i)) d := by
   have hw1 : 1 ≤ w := by omega
   have hw0 : 0 < w := by omega
   have hw64 : 64 ≤ w := by omega
-  by_cases hd : d = 0
-  · subst hd; simp [enc, mixes, mixArr, mLast, mRound, rep, Nat.mul_zero]
-    show (_ : Nat) = 0
-    rfl
-  have hd1 : 1 ≤ d := by omega
   have hR := rep_eq w d hw1
   have hI := idx_eq w d hw1 hd1
   have hs' : s < 2 ^ w := Nat.lt_of_lt_of_le hs (Nat.pow_le_pow_right (by decide) (by omega))
   have hsalt' : salt < 2 ^ w := Nat.lt_of_lt_of_le hsalt (Nat.pow_le_pow_right (by decide) (by omega))
   have hM : Nat.mul (rep w d) (nat_lit 0xffffffff) = enc w (fun _ => 0xffffffff) d := by
     show rep w d * 0xffffffff = _
-    rw [hR, enc_mul]; simp
+    rw [hR, enc_mul] <;> simp
   have hS : Nat.mul s (rep w d) = enc w (fun _ => s) d := by
     show s * rep w d = _
-    rw [hR, Nat.mul_comm, enc_mul]; simp
+    rw [hR, Nat.mul_comm, enc_mul] <;> simp
   have hK : Nat.mul (idx w d) (nat_lit 0x9e3779b9) = enc w (fun i => i * 0x9e3779b9) d := by
     show idx w d * 0x9e3779b9 = _
     rw [hI, enc_mul]
   have hT : Nat.mul (rep w d) salt = enc w (fun _ => salt) d := by
     show rep w d * salt = _
-    rw [hR, enc_mul]; simp
+    rw [hR, enc_mul] <;> simp
   have hK' := hlane_lt w d 0 0 hw (by decide) (by decide)
   have hKlt : ∀ i, i < d → i * 0x9e3779b9 < 2 ^ w := by
     intro i hi; have := hK' i hi; simp [hlane] at this; exact this
   unfold mixes hashArr
-  rw [hM, hS, hK, hT, enc_xor w hw0 _ _ d (fun _ _ => hs') hKlt,
+  rw [hM, hS, hK, hT]
+  show mixArr (enc w (fun _ => 0xffffffff) d)
+    ((enc w (fun _ => s) d ^^^ enc w (fun i => i * 0x9e3779b9) d) ^^^ enc w (fun _ => salt) d) = _
+  rw [enc_xor w hw0 _ _ d (fun _ _ => hs') hKlt,
     enc_xor w hw0 _ _ d (fun i hi => Nat.xor_lt_two_pow hs' (hKlt i hi)) (fun _ _ => hsalt'),
     mixArr_enc w d hw64 _ (fun i hi => Nat.xor_lt_two_pow (Nat.xor_lt_two_pow hs' (hKlt i hi)) hsalt')]
   rfl
 
 theorem mix_lt (x : Nat) : permanentMix32 x < 2 ^ 32 := by
-  rw [← lane_mix]; unfold laneL; rw [and32]; exact Nat.mod_lt _ (by decide)
+  have h : ∀ y : Nat, y &&& 0xffffffff < 2 ^ 32 := fun y => by
+    rw [and32]; exact Nat.mod_lt _ (Nat.two_pow_pos 32)
+  exact h _
 
 theorem skip_eq (e k : Nat) : skip e k = permanentSkipOne e k := by
   simp only [skip, permanentSkipOne]
@@ -941,7 +943,7 @@ theorem enc_shift_lanes (W d j : Nat) (f : Nat → Nat) (hj : j < d) (hf : ∀ L
 
 theorem loopG_succ (f : Nat → Nat → Nat) (t X : Nat) : loopG f (t + 1) X = loopG f t (f t X) := rfl
 
-theorem rowF_eq (d s W w dm1 dm2 t X : Nat) (ht : t < d) (hw : w = d + 128) (hs : s < 2 ^ 32)
+theorem rowF_eq (d s W w dm1 dm2 t X : Nat) (ht : t < d) (hw : w = d + 128)
     (h1 : dm1 = d - 1) (h2 : dm2 = d - 2) :
     rowF W w dm1 dm2 (enc w (fun i => permanentMix32 (hlane s 0x85ebca6b i)) d)
       (enc w (fun i => permanentMix32 (hlane s 0xc2b2ae35 i)) d) t X =
@@ -1007,7 +1009,8 @@ theorem fast_eq (d s : Nat) (hd : 3 ≤ d) (hs : s < 2 ^ 32) :
       (hashArr s (rep (d + 128) d) (idx (d + 128) d)) (nat_lit 0x85ebca6b))
     (mixes (Nat.mul (rep (d + 128) d) (nat_lit 0xffffffff)) (rep (d + 128) d)
       (hashArr s (rep (d + 128) d) (idx (d + 128) d)) (nat_lit 0xc2b2ae35)) = _
-  rw [mixes_enc d s (d + 128) rfl hs _ (by decide), mixes_enc d s (d + 128) rfl hs _ (by decide)]
+  rw [mixes_enc d s (d + 128) (by omega) rfl hs _ (by decide),
+    mixes_enc d s (d + 128) (by omega) rfl hs _ (by decide)]
   generalize width d = W at hW ⊢
   have hfast : fastC d W (d + 128) (enc (d + 128) (fun i => permanentMix32 (hlane s 0x85ebca6b i)) d)
       (enc (d + 128) (fun i => permanentMix32 (hlane s 0xc2b2ae35 i)) d) =
@@ -1026,8 +1029,10 @@ theorem fast_eq (d s : Nat) (hd : 3 ≤ d) (hs : s < 2 ^ 32) :
     apply enc_congr
     intro L _
     simp only [Rs, R]
-  rw [hfast, hinit, loop_spec d s hd W hW _
-    (fun t X ht => rowF_eq d s W (d + 128) _ _ t X ht rfl hs rfl rfl) d (Nat.le_refl d)]
+  rw [hfast, hinit, loop_spec d s hd W hW (rowF W (d + 128) (Nat.sub d (nat_lit 1)) (Nat.sub d (nat_lit 2))
+      (enc (d + 128) (fun i => permanentMix32 (hlane s 0x85ebca6b i)) d)
+      (enc (d + 128) (fun i => permanentMix32 (hlane s 0xc2b2ae35 i)) d))
+    (fun t X ht => rowF_eq d s W (d + 128) _ _ t X ht rfl rfl rfl) d (Nat.le_refl d)]
   have hpos := Nat.two_pow_pos d
   have e : 2 ^ d = 1 + (2 ^ d - 1) := by omega
   conv => lhs; rw [e]
