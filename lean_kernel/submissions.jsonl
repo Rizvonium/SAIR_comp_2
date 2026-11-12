@@ -11,3 +11,4 @@
 {"at": "2026-11-12T04:50:19Z", "problem": "fib", "sha256": "6479a2e1386a5f8097110ce7133230281b906e7cfc8b51da738bb72e745fc495", "note": "v3-gf-lucas", "file": "lean_kernel/solutions/fib/v3_gf_lucas.lean", "submissionId": "2760"}
 {"at": "2026-11-12T04:50:23Z", "problem": "ca-rule110", "sha256": "46421d9c614da4832038d061aec4cb2eba28a00cd1f944ac3117de1ecc1aa43f", "note": "v1-rawloop", "file": "lean_kernel/solutions/ca-rule110/v1_rawloop.lean", "submissionId": "2761"}
 {"at": "2026-11-12T04:50:29Z", "problem": "mertens", "sha256": "cdfabd2418c00251457b3e73210b337156b130d50909433d4759c6bf1a4ff932", "note": "v1-swar-sieve", "file": "lean_kernel/solutions/mertens/v1_swar_sieve.lean", "submissionId": "2762"}
+{"at": "2026-11-12T04:50:46Z", "problem": "partition", "sha256": "638ecb77e17dc99407f29a3b0da2282ede4366f0f619bd34dd9b5870bd625e73", "note": "v2-pentagonal", "file": "lean_kernel/solutions/partition/v2_pentagonal.lean", "submissionId": "2763"}
