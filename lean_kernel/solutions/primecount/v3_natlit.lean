@@ -61,22 +61,25 @@ def E29 : Nat := (nat_lit 114061015440554880466029290142507283122330712681213998
 /-- `2 ^ 341 * (2 ^ 341 - 1)` (divisor for multiples of `31`). -/
 def E31 : Nat := (nat_lit 20065826040452474621738395244141115820123061381619162977212070095324448220432589806036630768881181530860171118029751972576426284606129208944091695771017917307287514440011368124520719666108982918086658097152)
 
+/-- `fin 11` with the constant `2 ^ 11 - 1 = 2047` folded. -/
+def fin11 (n C : Nat) : Nat := Nat.sub (Nat.sub n (nat_lit 1)) (Nat.mod C (nat_lit 2047))
+
 /-- One sieving step with a precomputed divisor. -/
 def stE (B C E : Nat) : Nat := Nat.lor C (Nat.div B E)
 
 def f4 (n B C : Nat) : Nat :=
-  Bool.rec (motive := fun _ => Nat) (fin (nat_lit 11) n (stE B (stE B C E29) E31)) (slow n) (Nat.ble (nat_lit 1369) n)
+  Bool.rec (motive := fun _ => Nat) (fin11 n (stE B (stE B C E29) E31)) (slow n) (Nat.ble (nat_lit 1369) n)
 def g3 (n B C : Nat) : Nat :=
-  Bool.rec (motive := fun _ => Nat) (fin (nat_lit 11) n C) (f4 n B C) (Nat.ble (nat_lit 841) n)
+  Bool.rec (motive := fun _ => Nat) (fin11 n C) (f4 n B C) (Nat.ble (nat_lit 841) n)
 def f3 (n B C : Nat) : Nat := g3 n B (stE B (stE B C E23) E25)
 def g2 (n B C : Nat) : Nat :=
-  Bool.rec (motive := fun _ => Nat) (fin (nat_lit 11) n C) (f3 n B C) (Nat.ble (nat_lit 529) n)
+  Bool.rec (motive := fun _ => Nat) (fin11 n C) (f3 n B C) (Nat.ble (nat_lit 529) n)
 def f2 (n B C : Nat) : Nat := g2 n B (stE B (stE B C E17) E19)
 def g1 (n B C : Nat) : Nat :=
-  Bool.rec (motive := fun _ => Nat) (fin (nat_lit 11) n C) (f2 n B C) (Nat.ble (nat_lit 289) n)
+  Bool.rec (motive := fun _ => Nat) (fin11 n C) (f2 n B C) (Nat.ble (nat_lit 289) n)
 def f1 (n B C : Nat) : Nat := g1 n B (stE B (stE B C E11) E13)
 def g0 (n B C : Nat) : Nat :=
-  Bool.rec (motive := fun _ => Nat) (fin (nat_lit 11) n C) (f1 n B C) (Nat.ble (nat_lit 121) n)
+  Bool.rec (motive := fun _ => Nat) (fin11 n C) (f1 n B C) (Nat.ble (nat_lit 121) n)
 def fast (n B : Nat) : Nat := g0 n B (stE B (stE B (stE B (stE B (nat_lit 0) E2) E3) E5) E7)
 
 def impl (n : Nat) : Nat := fast n (Nat.shiftLeft (nat_lit 1) (Nat.mul (nat_lit 11) n))
@@ -350,6 +353,8 @@ theorem stE_eq (w n a C : Nat) (ha : 2 ≤ a) :
         Nat.pow_lt_pow_right (by norm_num) (Nat.mul_lt_mul_of_pos_left (by omega) h)
       rw [Nat.div_eq_of_lt hlt, Nat.zero_div, Nat.div_eq_of_lt (by omega)]
 
+theorem fin11_eq (n C : Nat) : fin11 n C = fin 11 n C := rfl
+
 theorem fast_eq (n : Nat) : fast n (2 ^ (11 * n)) = Nat.primeCounting n := by
   have hw : (1 : Nat) ≤ 11 := by norm_num
   have h2 : ∀ (S : List Nat), (∀ a ∈ S, 2 ≤ a) → ∀ B ≤ 37,
@@ -360,7 +365,7 @@ theorem fast_eq (n : Nat) : fast n (2 ^ (11 * n)) = Nat.primeCounting n := by
       have : B * B ≤ 37 * 37 := Nat.mul_le_mul hB hB
       norm_num; omega
     exact key 11 n S hw hn' hS (cover S B hB hcov n hnB)
-  simp only [fast, g0, f1, g1, f2, g2, f3, g3, f4, E2_eq, E3_eq, E5_eq, E7_eq, E11_eq, E13_eq,
+  simp only [fast, g0, f1, g1, f2, g2, f3, g3, f4, fin11_eq, E2_eq, E3_eq, E5_eq, E7_eq, E11_eq, E13_eq,
     E17_eq, E19_eq, E23_eq, E25_eq, E29_eq, E31_eq]
   simp only [stE_eq 11 n _ _ (by decide : 2 ≤ 2), stE_eq 11 n _ _ (by decide : 2 ≤ 3),
     stE_eq 11 n _ _ (by decide : 2 ≤ 5), stE_eq 11 n _ _ (by decide : 2 ≤ 7),
