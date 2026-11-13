@@ -91,3 +91,9 @@ See `submissions.jsonl`. v0 = official examples (all 8 submitted 2026-11-11).
 
 Calibration: official / bench_ir ≈ 1.0 (fib v2 18.10M vs 17.06M local; partition v1 17.61M vs
 18.56M local). The earlier "×1.4" guess was wrong: bench_ir numbers are directly comparable.
+
+## Edition 2026-11-13 (cutoff 00:00 UTC Nov 13)
+ranks: mertens 19/48 (v3), partition 30/64 (v2), primecount 27/51 (v4), ca-rule110 37/57 (v3),
+fib 37/68 (v3, official 14.54M vs 12.78M local: ×1.14, jittered inputs), polydisc 45, sha256 47,
+permanent 50 (still v0). Uploaded 01:25 UTC Nov 13 (count from Nov 14): ca v6, fib v4, polydisc v2,
+permanent v4, sha256 v2.
